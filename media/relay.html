@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>overnight media relay</title>
+<p>Overnight media relay. You can close this tab.</p>
+<script>
+// hands a public file of this site to the page that opened it (Skool's page cannot fetch from here itself)
+addEventListener('message', async e => {
+  const want = e.data && e.data.want;
+  if (!want || !/^[\w.-]+$/.test(want)) return;
+  const r = await fetch(want);
+  const buf = await r.arrayBuffer();
+  e.source.postMessage({ got: want, type: r.headers.get('content-type'), buf }, '*', [buf]);
+});
+if (window.opener) window.opener.postMessage({ relayReady: true }, '*');
+</script>
