@@ -1,31 +1,20 @@
-# CI: start Overnight the way a member does and prove it started from its own log.
-#   ci/start-app.ps1            the real start: the Skool sign-in window comes first (the gate). Proof: a new
-#                               `--- Overnight <version> on win32` line, then a `skool check ...` line
-#   ci/start-app.ps1 -Ungated   a start with a scratch profile (OVERNIGHT_PROFILE turns the gate off): the main window
-#                               loads, and the app's own first-paint check writes `graphics: the window drew (...)`
-param([switch]$Ungated, [int]$Seconds = 120)
+# CI: start Overnight the way a member does and prove it started from its own log: the Skool sign-in window comes
+# first, so the proof is a new `--- Overnight <version> on win32` line, then a `skool check ...` line.
+param([int]$Seconds = 120)
 $ErrorActionPreference = 'Stop'
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $out = Join-Path $env:GITHUB_WORKSPACE 'ci-out'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\overnight\Overnight.exe'
-$tag = if ($Ungated) { 'ungated' } else { 'gated' }
+$tag = 'gated'
 function Own { @(Get-Process -Name 'Overnight' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -ieq $exe }) }
 function Close-Own { Own | Stop-Process -Force -ErrorAction SilentlyContinue; for ($i = 0; $i -lt 30 -and (Own).Count; $i++) { Start-Sleep -Milliseconds 500 } }
 
 $was = Own
 if ($was.Count) { "Overnight was already running (pids $(($was | ForEach-Object Id) -join ', ')): its installer or an earlier step started it. Closing it for a clean start." ; Close-Own }
 
-if ($Ungated) {
-  $prof = Join-Path $env:RUNNER_TEMP 'ov-ungated-profile'
-  $env:OVERNIGHT_PROFILE = $prof; $env:OVERNIGHT_WORKSPACE = Join-Path $env:RUNNER_TEMP 'ov-ungated-ws'
-  $log = Join-Path $prof 'logs\overnight.log'
-  $want = @('^\S+ --- Overnight \S+ on win32', '^\S+ graphics (the window drew|window check|window blank|.*failed)')
-} else {
-  Remove-Item Env:OVERNIGHT_PROFILE -ErrorAction SilentlyContinue
-  $log = Join-Path $env:APPDATA 'Overnight\logs\overnight.log'
-  $want = @('^\S+ --- Overnight \S+ on win32', '^\S+ skool check ')
-}
+$log = Join-Path $env:APPDATA 'Overnight\logs\overnight.log'
+$want = @('^\S+ --- Overnight \S+ on win32', '^\S+ skool check ')
 $before = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log).Count } else { 0 }
 "starting $exe ($tag); log $log has $before line(s) before"
 $p = Start-Process -FilePath $exe -PassThru

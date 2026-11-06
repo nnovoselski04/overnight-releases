@@ -37,6 +37,10 @@ jobs:
         if: matrix.mode != 'as-is'
         run: ./ci/hide-tools.ps1
 
+      - name: install.ps1, test mode (must change nothing)
+        if: matrix.mode != 'as-is'
+        run: ./ci/run-install.ps1 -Dry
+
       - name: install.ps1, first run
         env:
           OVERNIGHT_SETUP_NO_WINGET: ${{ matrix.mode == 'no-winget' && '1' || '' }}
@@ -55,10 +59,6 @@ jobs:
         if: matrix.mode == 'clean'
         timeout-minutes: 50
         run: ./ci/app-setup.ps1 -Ids packages
-
-      - name: Start Overnight without the gate (does the main window draw here?)
-        continue-on-error: true
-        run: ./ci/start-app.ps1 -Ungated -Seconds 90
 
       - name: Put the runner's Git back
         if: always() && matrix.mode != 'as-is'

@@ -399,15 +399,18 @@ if (-not $DryRun -and -not $NoOpen -and (Test-Path -LiteralPath $AppExe)) {
   else { Start-Process -FilePath $AppExe; Ok 'Opening Overnight' }
 }
 Note 'Your videos will live in Documents\Overnight.'
-Put '' White
-Put 'Next:' White
-foreach ($t in $NextSteps) { Put "  - $t" White }
+if (-not $DryRun) {
+  Put '' White
+  Put 'Next:' White
+  foreach ($t in $NextSteps) { Put "  - $t" White }
+}
 Put '' White
 if ($Problems.Count) {
   Put "Finished, with $($Problems.Count) problem(s) left:" Yellow
   foreach ($t in $Problems) { Put "  - $t" Yellow }
   Put 'Run the same command again any time to update or repair.' White
-} else { Put 'All set. Run the same command again any time to update or repair.' White }
+} elseif ($DryRun) { Put 'Test mode finished: nothing was changed.' White }
+else { Put 'All set. Run the same command again any time to update or repair.' White }
 }
 catch {
   $stopped = $true
