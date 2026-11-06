@@ -1,0 +1,73 @@
+# Runs install.ps1 end to end on a fresh GitHub Windows runner, twice (the second run must find everything in place),
+# then checks that every tool resolves where Overnight looks, that the app is installed, that it starts (its log), and
+# that the app's own setup can build its Python environment on the Python install.ps1 provided.
+#   clean: the runner's own git, Python and ffmpeg are hidden first, like a member's new PC
+#   as-is: the runner as it comes (tools already there: install.ps1 must use them and skip)
+#   no-winget: clean, and winget skipped, so the official-download fallbacks are what installs git, ffmpeg and Python
+name: test-install
+on:
+  push:
+    branches: [installer]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    name: install (${{ matrix.mode }})
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [clean, as-is, no-winget]
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: What the runner has
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion); Windows $([Environment]::OSVersion.Version)"
+          "winget: $([bool](Get-Command winget -ErrorAction SilentlyContinue))"
+          foreach ($t in 'git', 'ffmpeg', 'python', 'claude') { $c = Get-Command $t -All -CommandType Application -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source; "{0,-7} {1}" -f $t, $(if ($c) { $c -join ', ' } else { 'not found' }) }
+          "session: $([Environment]::UserInteractive), user $env:USERNAME"
+
+      - name: Hide the runner's own tools
+        if: matrix.mode != 'as-is'
+        run: ./ci/hide-tools.ps1
+
+      - name: install.ps1, test mode (must change nothing)
+        if: matrix.mode != 'as-is'
+        run: ./ci/run-install.ps1 -Dry
+
+      - name: install.ps1, first run
+        env:
+          OVERNIGHT_SETUP_NO_WINGET: ${{ matrix.mode == 'no-winget' && '1' || '' }}
+        run: ./ci/run-install.ps1 -Run 1
+
+      - name: install.ps1, second run (nothing to do)
+        run: ./ci/run-install.ps1 -Run 2
+
+      - name: Check the tools and the app
+        run: ./ci/check-tools.ps1
+
+      - name: Start Overnight (Skool window first)
+        run: ./ci/start-app.ps1
+
+      - name: The app's own setup on this Python (packages)
+        if: matrix.mode == 'clean'
+        timeout-minutes: 50
+        run: ./ci/app-setup.ps1 -Ids packages
+
+      - name: Put the runner's Git back
+        if: always() && matrix.mode != 'as-is'
+        run: ./ci/restore-git.ps1
+
+      - name: Upload the output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-output-${{ matrix.mode }}
+          path: ci-out/
+          if-no-files-found: warn

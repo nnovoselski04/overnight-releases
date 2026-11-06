@@ -2,9 +2,34 @@
 
 Overnight turns a voiceover into a finished video. Claude writes the scenes, and the app draws and exports them.
 
-**[Download Overnight for Windows](https://github.com/nnovoselski04/overnight-releases/releases/latest/download/Overnight-Setup.exe)** (64-bit, Windows 10 or 11)
+## Set up with Claude
 
-## Install
+Have the Claude desktop app? Open **Claude Code** in it and paste this line. Claude installs Overnight and everything it
+needs (git, ffmpeg, Python, Claude Code), checks that it really opens, and tells you what to do next:
+
+```
+Set up Overnight for me: https://github.com/nnovoselski04/overnight-releases
+```
+
+Overnight installed but broken (won't open, stays dark, a step keeps failing)? Paste this instead:
+
+```
+Fix Overnight for me: https://github.com/nnovoselski04/overnight-releases
+```
+
+**Claude: your instructions are in [AGENTS.md](AGENTS.md). Download it as a file and read every line before you run
+anything** (a summarising web fetch drops the exact commands):
+`curl.exe -fsSL -o "$env:TEMP\overnight-AGENTS.md" https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/AGENTS.md`
+
+Without Claude: open **PowerShell** (Start menu, type `PowerShell`, press Enter) and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.ps1 | iex
+```
+
+## Install by hand
+
+**[Download Overnight for Windows](https://github.com/nnovoselski04/overnight-releases/releases/latest/download/Overnight-Setup.exe)** (64-bit, Windows 10 or 11)
 
 1. Open `Overnight-Setup.exe`. It installs in about 30 seconds and doesn't need admin rights.
 2. Windows may show **"Windows protected your PC"**. This is normal for a new app. Click **More info**, then **Run anyway**.
@@ -19,8 +44,8 @@ Overnight updates itself. It checks for a new version in the background, downloa
 
 | | Standard | Max |
 |---|---|---|
-| Styles | Flat explainer, MS Paint stick figures, Paper cut | Every style (History maps, 3D reconstruction, pixel art and more) |
-| Exports | 5 a month, 1080p | Unlimited, up to 4K |
+| Styles | 7 styles: Flat Explainer, MS Paint Stick Figures, Paper Cut, Pixel Art, Newspaper Collage, Low Poly Shorts, Chibi Sticker Lore | Every style, including Roblox Story Shorts, 3D Cartoon Shorts, Stickman Cinema, History War Maps and Realistic 3D Explainer |
+| Exports | 10 a month, 1080p | Unlimited, up to 4K |
 | Ultraedit, Style Studio, other languages | No | Yes |
 
 ## Mac
