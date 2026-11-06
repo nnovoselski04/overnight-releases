@@ -14,6 +14,8 @@
 #   OVERNIGHT_NO_OPEN=1      don't start Overnight at the end
 #   OVERNIGHT_CLOSE_APP=1    the member said yes: an open Overnight may be closed to update it (only Overnight's own
 #                            processes, found by their program path)
+#   OVERNIGHT_REINSTALL=1    repair: install the newest Overnight again even when it is up to date (projects, settings
+#                            and the Skool login stay)
 # How it ends: 0 = all set; 3 = finished, with problems left (listed at the end); 1 = stopped (the reason is printed).
 # Its output also goes to %TEMP%\overnight-setup\install.log.
 
@@ -31,6 +33,7 @@ $LogFile = Join-Path $Dl 'install.log'
 $DryRun = [bool]$env:OVERNIGHT_SETUP_DRY
 $NoOpen = [bool]$env:OVERNIGHT_NO_OPEN
 $CloseApp = $env:OVERNIGHT_CLOSE_APP -eq '1'
+$Reinstall = $env:OVERNIGHT_REINSTALL -eq '1'
 $Problems = New-Object System.Collections.ArrayList   # real problems: the run ends with code 3
 $NextSteps = New-Object System.Collections.ArrayList  # what every member does next (not problems)
 
@@ -329,6 +332,11 @@ else {
   else { Warn "Claude Code did not install$(if ($why) { ": $why" } else { ' (its own lines are above)' }). Overnight uses the copy of Claude Code built into it until then; run this installer again once https://claude.ai opens in your browser." }
 }
 
+# Claude Code's installer leaves its folder off the PATH and asks for it to be added: the same, done here, so `claude`
+# works in a new terminal (Overnight itself finds it there either way)
+$clDir = Split-Path $claudeHome
+if (-not $DryRun -and $cl -eq $claudeHome -and -not (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $clDir)) { Add-UserPath $clDir; Note "added $clDir to your PATH, so 'claude' works in a new terminal" }
+
 # ---- Overnight ----
 Step 'Overnight'
 $AppDir = Find-AppDir
@@ -339,8 +347,8 @@ if (-not $latest) {
   if ($current) { Problem "could not reach https://github.com/$Owner/$Repo/releases, so Overnight $current was not checked for an update." }
   else { Stop-Install "could not reach https://github.com/$Owner/$Repo/releases (no internet, or a firewall, proxy or VPN blocks github.com). Nothing of Overnight was changed: run this installer again." }
 }
-if ($current -and (-not $latest -or (Ver $current) -ge (Ver $latest.version))) { Ok "Overnight $current is installed and up to date ($AppExe)" }
-elseif ($DryRun) { Note "(test mode) would $(if ($current) { "update Overnight $current to" } else { 'install Overnight' }) $($latest.version)" }
+if ($current -and (-not $latest -or ((Ver $current) -ge (Ver $latest.version) -and -not $Reinstall))) { Ok "Overnight $current is installed and up to date ($AppExe)" }
+elseif ($DryRun) { Note "(test mode) would $(if ($current -and $Reinstall -and (Ver $current) -ge (Ver $latest.version)) { 'install again: Overnight' } elseif ($current) { "update Overnight $current to" } else { 'install Overnight' }) $($latest.version)" }
 else {
   $target = $latest.version
   $open = App-Procs $AppExe

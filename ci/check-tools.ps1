@@ -3,7 +3,8 @@
 $ErrorActionPreference = 'Stop'
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $fail = @()
-function Native($exe, [string[]]$a) { $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { $o = & $exe @a 2>&1 | ForEach-Object { "$_" } | Select-Object -First 1; return @{ code = $LASTEXITCODE; out = $o } } finally { $ErrorActionPreference = $eap } }
+# (all output first, then its first line: Select-Object -First 1 in the pipe would stop the program early)
+function Native($exe, [string[]]$a) { $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { $o = @(& $exe @a 2>&1 | ForEach-Object { "$_" }); return @{ code = $LASTEXITCODE; out = $(if ($o.Count) { $o[0] } else { '' }) } } finally { $ErrorActionPreference = $eap } }
 
 $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($git) { $r = Native $git.Source @('--version'); "git     $($git.Source): $($r.out)"; if ($r.code -ne 0) { $fail += 'git does not run' } } else { $fail += 'git is not on the PATH' }
