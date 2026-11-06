@@ -28,7 +28,8 @@ winget can't):
 | Overnight | the newest release, `%LOCALAPPDATA%\Programs\overnight\Overnight.exe` | the app |
 
 Not in the script, on purpose: Overnight's Python packages (PyTorch, transcription, the image tools, about 2 GB), its
-transcription model and its packs. The app installs those itself into its own folder: Home > **Install your tools** >
+transcription model, its packs and **Blender 5.2** (about 0.4 GB download, 0.9 GB installed: the 3D sets of 3D Cartoon
+Shorts (New) and the styles rendered in Blender; only when the member's plan has one of them). The app installs those itself into its own folder: Home > **Install your tools** >
 **Set up** (the same as Settings > System > Set up everything), after the Skool login (section 7). Overnight picks up the git, ffmpeg and Python above by itself (the
 PATH, or where those installers put them).
 
@@ -195,8 +196,9 @@ Electron <version>`; on a first start the **Skool sign-in window** opens before 
    seconds later `graphics the window drew (...)`: that is the proof that the window really shows. Ask the member
    whether they see the Home page too.
 5. On the Home page's setup list: **Connect Claude** > **Sign in** (the member's own Claude account), then
-   **Install your tools** > **Set up** (Overnight's Python packages, about 2 GB with PyTorch, and its packs; 10 to 30
-   minutes). Its progress is in the log as `setup: ...` lines, ending with `setup: Everything is set up.` or
+   **Install your tools** > **Set up** (Overnight's Python packages, about 2 GB with PyTorch, its packs and Blender 5.2;
+   10 to 30 minutes). Blender 5.2 is the official build from blender.org, checked and unpacked into Overnight's own
+   folder: never install Blender yourself, and never end a `blender` process. Its progress is in the log as `setup: ...` lines, ending with `setup: Everything is set up.` or
    `setup: Done, with problems. ...` (Overnight then opens its own setup chat to fix it: the member watches it there).
    **Set up transcription** starts by itself once Claude is connected.
 
@@ -263,6 +265,7 @@ antivirus programs: restore Overnight from their quarantine and add the folders 
 | Its data (settings, log, its own Python and tools) | `%APPDATA%\Overnight` |
 | Its log | `%APPDATA%\Overnight\logs\overnight.log` |
 | Its own Python environment (made by Install your tools > Set up) | `%APPDATA%\Overnight\python` |
+| Its own Blender 5.2 (made by Install your tools > Set up) | `%APPDATA%\Overnight\blender\5.2.3` |
 | The member's videos (never touch) | `Documents\Overnight` |
 | Releases | https://github.com/nnovoselski04/overnight-releases/releases |
 | Installer output | `%TEMP%\overnight-setup\install.log` |
