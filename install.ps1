@@ -7,7 +7,8 @@
 #   git, ffmpeg, Python 3.12 (per user), the Microsoft Visual C++ Redistributable (x64), Claude Code, Overnight.
 # Overnight finds git, ffmpeg and Python on the PATH or where these installers put them (src/main/system.js). Its Python
 # packages (PyTorch, transcription, the image tools) go into its OWN Python environment, which the app makes itself:
-# that is "Set up everything" on its Home page, after the Skool login. This script never writes into Overnight's data.
+# Home > Install your tools > Set up (= Settings > Set up everything), after the Skool login. This script never writes
+# into Overnight's data.
 #
 # Switches (environment variables):
 #   OVERNIGHT_SETUP_DRY=1    test mode: look and report, change nothing
@@ -16,6 +17,7 @@
 #                            processes, found by their program path)
 #   OVERNIGHT_REINSTALL=1    repair: install the newest Overnight again even when it is up to date (projects, settings
 #                            and the Skool login stay)
+#   OVERNIGHT_SETUP_NO_WINGET=1  tests only: skip winget, so the official downloads are what runs
 # How it ends: 0 = all set; 3 = finished, with problems left (listed at the end); 1 = stopped (the reason is printed).
 # Its output also goes to %TEMP%\overnight-setup\install.log.
 
@@ -110,7 +112,7 @@ function Install-Tool($name, $id, [string[]]$extra, [scriptblock]$direct) {
   Note "Installing $name ..."
   if (Winget-Install $id $extra) { Ok "$name installed (winget)"; return $true }
   try { & $direct; Refresh-Path; Ok "$name installed (official download)"; return $true }
-  catch { Problem "$name did not install ($($_.Exception.Message)). Run this installer again; if it fails again, Overnight's own Set up everything (Home page) can install $name into its own folder."; return $false }
+  catch { Problem "$name did not install ($($_.Exception.Message)). Run this installer again; if it fails again, Overnight's own setup (Home > Install your tools > Set up) can install $name into its own folder."; return $false }
 }
 
 # ---- the official downloads (the winget fallback), all per user, no admin rights ----
@@ -263,7 +265,8 @@ if ($sac -eq 1) { Warn 'Smart App Control is On. It can block the Python package
 
 Step 'Windows Package Manager (winget)'
 Refresh-Path
-if (Get-Command winget -ErrorAction SilentlyContinue) { $HaveWinget = $true; Ok 'winget is available' }
+if ($env:OVERNIGHT_SETUP_NO_WINGET -eq '1') { Warn 'winget skipped (OVERNIGHT_SETUP_NO_WINGET, a test): the official downloads are used.' }
+elseif (Get-Command winget -ErrorAction SilentlyContinue) { $HaveWinget = $true; Ok 'winget is available' }
 else { Warn 'winget is not available: the tools come from their official downloads instead (that works too).' }
 
 # ---- git, ffmpeg, Python ----
@@ -289,7 +292,7 @@ else {
     if (-not $py) { Problem 'Python 3.12 was installed but does not start. Open a new PowerShell window and run this installer again; if it shows again, restart the computer first.' }
     elseif ($py.why) {
       $p312 = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
-      Problem "Overnight would still use $($py.exe) ($($py.why)). After the Skool login, in Overnight's Settings > Tool paths, set Python to $p312, then click Set up everything on Home."
+      Problem "Overnight would still use $($py.exe) ($($py.why)). After the Skool login, in Overnight's Settings > Tool paths, set Python to $p312, then Home > Install your tools > Set up."
     } else { Ok "Overnight will use Python $($py.ver): $($py.exe)" }
   }
 }
@@ -387,8 +390,8 @@ else {
 # ---- done ----
 Step 'Done'
 [void]$NextSteps.Add('In the Overnight window, log in with Skool: the account you joined the Overnight community with (https://www.skool.com/overnight-ai-video-automation-5588).')
-[void]$NextSteps.Add('Then click Set up everything on the Home page: Overnight installs its Python packages (about 2 GB with PyTorch), transcription and its packs itself.')
-[void]$NextSteps.Add('Then sign in to Claude on the Home page if it asks (your own Claude plan).')
+[void]$NextSteps.Add('On the Home page, Connect Claude: click Sign in (your own Claude account).')
+[void]$NextSteps.Add('Then Install your tools: click Set up. Overnight installs its Python packages (about 2 GB with PyTorch) and its packs itself; transcription then sets itself up.')
 if (-not $DryRun -and -not $NoOpen -and (Test-Path -LiteralPath $AppExe)) {
   if ((App-Procs $AppExe).Count) { Ok 'Overnight is open' }
   else { Start-Process -FilePath $AppExe; Ok 'Opening Overnight' }

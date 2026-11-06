@@ -3,6 +3,7 @@
 # that the app's own setup can build its Python environment on the Python install.ps1 provided.
 #   clean: the runner's own git, Python and ffmpeg are hidden first, like a member's new PC
 #   as-is: the runner as it comes (tools already there: install.ps1 must use them and skip)
+#   no-winget: clean, and winget skipped, so the official-download fallbacks are what installs git, ffmpeg and Python
 name: test-install
 on:
   push:
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [clean, as-is]
+        mode: [clean, as-is, no-winget]
     defaults:
       run:
         shell: powershell
@@ -33,10 +34,12 @@ jobs:
           "session: $([Environment]::UserInteractive), user $env:USERNAME"
 
       - name: Hide the runner's own tools
-        if: matrix.mode == 'clean'
+        if: matrix.mode != 'as-is'
         run: ./ci/hide-tools.ps1
 
       - name: install.ps1, first run
+        env:
+          OVERNIGHT_SETUP_NO_WINGET: ${{ matrix.mode == 'no-winget' && '1' || '' }}
         run: ./ci/run-install.ps1 -Run 1
 
       - name: install.ps1, second run (nothing to do)
@@ -58,7 +61,7 @@ jobs:
         run: ./ci/start-app.ps1 -Ungated -Seconds 90
 
       - name: Put the runner's Git back
-        if: always() && matrix.mode == 'clean'
+        if: always() && matrix.mode != 'as-is'
         run: ./ci/restore-git.ps1
 
       - name: Upload the output

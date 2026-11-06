@@ -28,8 +28,10 @@ if ($p.ExitCode -ne 0) { throw "the app's own setup ($Ids) failed: exit code $($
 $py = Join-Path $prof 'python\Scripts\python.exe'
 if ($Ids -match 'packages') {
   if (-not (Test-Path -LiteralPath $py)) { throw "the app's own Python environment is not at $py" }
+  # the packages every version so far installs (the app's own check above is the full list of its version); importing
+  # torch also proves the Visual C++ runtime is there
   $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  & $py -c "import numpy, scipy, PIL, stable_whisper, faster_whisper, soundfile, torch, onnxruntime, cv2, vtracer; print('imports ok, torch', torch.__version__)" 2>&1 | ForEach-Object { "$_" }
+  & $py -c "import numpy, scipy, PIL, stable_whisper, faster_whisper, torch, onnxruntime, cv2, vtracer; print('imports ok, torch', torch.__version__)" 2>&1 | ForEach-Object { "$_" }
   $c = $LASTEXITCODE; $ErrorActionPreference = $eap
   if ($c -ne 0) { throw "the app's Python environment does not import its packages (exit $c)" }
 }

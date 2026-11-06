@@ -5,8 +5,8 @@ your whole job: read all of it before you run anything, then follow it in order.
 
 The job, in short: check which computer this is, download the installer script from this repo, read it, run it, read
 every line it prints, fix what fails (section 9), start Overnight, prove from its log that it started, and tell the
-member to log in with Skool and click **Set up everything**. If something can't be fixed, write a short report the
-member can post in the community (section 11).
+member to log in with Skool, connect Claude and click **Set up** under **Install your tools**. If something can't be
+fixed, write a short report the member can post in the community (section 11).
 
 **The member said "Fix Overnight for me"** (installed but broken: won't open, stays dark, a step keeps failing)? Your
 job is section 12. It uses sections 1, 2, 3, 7, 8, 9 and 10 too.
@@ -28,8 +28,8 @@ winget can't):
 | Overnight | the newest release, `%LOCALAPPDATA%\Programs\overnight\Overnight.exe` | the app |
 
 Not in the script, on purpose: Overnight's Python packages (PyTorch, transcription, the image tools, about 2 GB), its
-transcription model and its packs. The app installs those itself into its own folder: that is **Set up everything** on
-its Home page, after the Skool login (section 7). Overnight picks up the git, ffmpeg and Python above by itself (the
+transcription model and its packs. The app installs those itself into its own folder: Home > **Install your tools** >
+**Set up** (the same as Settings > System > Set up everything), after the Skool login (section 7). Overnight picks up the git, ffmpeg and Python above by itself (the
 PATH, or where those installers put them).
 
 Windows 10 (1809, build 17763) or 11, 64-bit. **Mac: Overnight for Mac is coming; tell the member and stop.** Linux is
@@ -173,7 +173,9 @@ Electron <version>`; on a first start the **Skool sign-in window** opens before 
 `skool check signed out`.
 
 1. If Overnight is already running (section 3, or the installer started it), don't start a second copy: read the log.
-   Otherwise: `Start-Process "$env:LOCALAPPDATA\Programs\overnight\Overnight.exe"`.
+   Otherwise: `Start-Process "$env:LOCALAPPDATA\Programs\overnight\Overnight.exe"`. Inside an app package (section 3)
+   don't start it from your shell (it would inherit the package's private AppData): start it from the Terminal panel,
+   or ask the member to open it from the Start menu.
 2. Wait about 20 seconds, then read the last 40 lines:
    `Get-Content "$env:APPDATA\Overnight\logs\overnight.log" -Tail 40`
    and the windows: `Get-Process -Name Overnight | Where-Object MainWindowTitle | Select-Object Id, MainWindowTitle`.
@@ -183,11 +185,11 @@ Electron <version>`; on a first start the **Skool sign-in window** opens before 
 4. After their login the log says `skool check member, standard` (or `max`), then the main window opens and about 6
    seconds later `graphics the window drew (...)`: that is the proof that the window really shows. Ask the member
    whether they see the Home page too.
-5. Then: **Set up everything** on the Home page (Overnight's Python packages, about 2 GB, and its packs). It takes 10
-   to 30 minutes. Its progress is in the log as `setup: ...` lines; it ends with `setup: Everything is set up.` or
-   `setup: Done, with problems. ...` (then Overnight opens its own setup chat to fix it: the member watches it there).
-   A row the button leaves out (Transcription asks first) has its own button on Home.
-6. If Home asks to connect Claude, the member signs in there with their own Claude account.
+5. On the Home page's setup list: **Connect Claude** > **Sign in** (the member's own Claude account), then
+   **Install your tools** > **Set up** (Overnight's Python packages, about 2 GB with PyTorch, and its packs; 10 to 30
+   minutes). Its progress is in the log as `setup: ...` lines, ending with `setup: Everything is set up.` or
+   `setup: Done, with problems. ...` (Overnight then opens its own setup chat to fix it: the member watches it there).
+   **Set up transcription** starts by itself once Claude is connected.
 
 `skool check offline` / `no answer from Skool (online)`, or no `graphics the window drew` line after the login:
 section 8 and 9. Inside an app package (section 3) you may be reading a private copy of the log: if
@@ -249,7 +251,7 @@ antivirus programs: restore Overnight from their quarantine and add the folders 
 | The app | `%LOCALAPPDATA%\Programs\overnight\Overnight.exe` (Start menu: Overnight) |
 | Its data (settings, log, its own Python and tools) | `%APPDATA%\Overnight` |
 | Its log | `%APPDATA%\Overnight\logs\overnight.log` |
-| Its own Python environment (made by Set up everything) | `%APPDATA%\Overnight\python` |
+| Its own Python environment (made by Install your tools > Set up) | `%APPDATA%\Overnight\python` |
 | The member's videos (never touch) | `Documents\Overnight` |
 | Releases | https://github.com/nnovoselski04/overnight-releases/releases |
 | Installer output | `%TEMP%\overnight-setup\install.log` |
@@ -259,8 +261,8 @@ antivirus programs: restore Overnight from their quarantine and add the folders 
 Delete your download folder: `Remove-Item -Recurse -Force "$env:TEMP\overnight-setup"`.
 
 **When it started**, tell the member in your own short words: Overnight is installed and open (later: Start menu >
-Overnight); **log in with Skool** in its window; then **Set up everything** on Home; then sign in to Claude there if it
-asks. Their videos will be in `Documents\Overnight`. To update or repair later: paste the same line into Claude again.
+Overnight); **log in with Skool** in its window; then on Home **Connect Claude** (Sign in) and **Install your tools**
+(Set up). Their videos will be in `Documents\Overnight`. To update or repair later: paste the same line into Claude again.
 Mention anything they should know (Smart App Control, OneDrive, an API key, an antivirus they allowed).
 
 **When something failed** and you couldn't fix it, write this for the member to paste into the
@@ -286,7 +288,7 @@ token or a password.
 Section 1 holds here too. Never touch the member's videos. Work in order; stop as soon as it works again.
 
 1. **Ask what's wrong** in one question, if they didn't say: won't open / stays dark, or a step (export, voiceover,
-   Set up everything, a build) that keeps failing. Ask for the exact message.
+   Install your tools, a build) that keeps failing. Ask for the exact message.
 2. **Look first:** section 3; the last 150 lines of `overnight.log` (look for `error`, `failed`, `uncaught`,
    `graphics`, `skool`, `setup:`, `ENOENT`, `EPERM`, `WinError`, the member's message); free disk space; the tools
    (section 6). Tell the member in two or three sentences what you found.
@@ -296,7 +298,7 @@ Section 1 holds here too. Never touch the member's videos. Work in order; stop a
    - A tool missing or broken, files an antivirus removed: Repair = the installer again (sections 4 and 5), with
      `OVERNIGHT_REINSTALL=1` when Overnight's own files are damaged (after the member closed it or said yes to
      `OVERNIGHT_CLOSE_APP=1`). Projects, settings and the Skool login stay.
-   - A Set up everything row that fails: Overnight's own setup chat opens and works on it; ask the member to watch it
+   - An Install your tools step that fails: Overnight's own setup chat opens and works on it; ask the member to watch it
      there. Its log lines are `setup: <row>: failed: <why>`.
    - Claude not connected in Overnight: `claude --version` must work in a new terminal; then the member signs in on
      Home. Never ask for or read a key.
