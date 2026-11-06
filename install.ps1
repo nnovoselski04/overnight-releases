@@ -247,16 +247,26 @@ if (-not [Environment]::Is64BitOperatingSystem) { Stop-Install 'Overnight needs 
 $build = [Environment]::OSVersion.Version.Build
 if ($build -lt 17763) { Stop-Install 'Overnight needs Windows 10 (version 1809) or newer.' }
 Ok "Windows build $build, 64-bit, $env:PROCESSOR_ARCHITECTURE"
-# inside an app package (an MSIX app's shell, like some Claude desktop apps), Windows keeps what this script writes into
-# AppData in that app's private copy: Overnight and its Start menu entry would be invisible to the member
+# A shell started by an app package (the Claude desktop app's own shell on Windows, seen 6 Nov 2026) can have its
+# AppData writes redirected into that package's private copy (%LOCALAPPDATA%\Packages\<app>\LocalCache) without having
+# a package identity of its own, so GetCurrentPackageFullName can't tell. A probe file can: written into %APPDATA%,
+# does it show up in a package's LocalCache? Then Overnight, its data and its Start menu entry would be invisible to
+# the member. (The probe is deleted at once.)
+$redirect = $null
 try {
-  Add-Type -Namespace OvnSetup -Name Pkg -MemberDefinition '[DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern int GetCurrentPackageFullName(ref int length, System.Text.StringBuilder name);' -ErrorAction Stop
-  $n = 0
-  if ([OvnSetup.Pkg]::GetCurrentPackageFullName([ref]$n, $null) -ne 15700) {
-    Stop-Install "this PowerShell runs inside an app package, so what it installs would only be visible inside that app. Open PowerShell yourself (Start menu, type PowerShell, press Enter) and paste: $OneLine"
-  }
-  Ok 'not inside an app package'
-} catch { if ("$_" -eq 'OVN_STOP') { throw } ; Note "could not check for an app package ($($_.Exception.Message))" }
+  $probe = 'overnight-setup-probe-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.txt'
+  $pf = Join-Path $env:APPDATA $probe
+  [IO.File]::WriteAllText($pf, 'probe')
+  try {
+    foreach ($d in @(Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -ErrorAction SilentlyContinue)) {
+      if (Test-Path -LiteralPath (Join-Path $d.FullName "LocalCache\Roaming\$probe")) { $redirect = $d.Name; break }
+    }
+  } finally { Remove-Item -LiteralPath $pf -Force -ErrorAction SilentlyContinue }
+} catch { Note "could not check where AppData writes go ($($_.Exception.Message))" }
+if ($redirect) {
+  Stop-Install "this PowerShell's AppData is redirected into the app package $redirect, so what it installs would only be visible inside that app. Run it from a terminal of your own: open PowerShell (Start menu, type PowerShell, press Enter) and paste: $OneLine"
+}
+Ok 'AppData is the real one (not an app package''s private copy)'
 $free = $null; try { $free = [math]::Round((Get-PSDrive ($env:SystemDrive.TrimEnd(':'))).Free / 1GB, 1) } catch { }
 if ($null -ne $free) { if ($free -lt 10) { Warn "only $free GB free on $env:SystemDrive. Overnight and its tools need about 6 GB, its videos more." } else { Ok "$free GB free on $env:SystemDrive" } }
 $sac = $null

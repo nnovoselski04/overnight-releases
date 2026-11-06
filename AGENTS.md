@@ -51,7 +51,8 @@ not supported: tell the member and stop.
   credential files, cookies or browser data. Check only whether `ANTHROPIC_API_KEY` is set (true or false). Never ask
   for a password, key or sign-in code: you need no sign-in for any of this.
 - **Only these places are yours to change:** Overnight's install folder, your download folder `%TEMP%\overnight-setup`,
-  and what `install.ps1` itself changes (the tools above, and the user PATH when it had to download a tool directly).
+  the probe file of section 3 (deleted at once), and what `install.ps1` itself changes (the tools above, and the user
+  PATH when it had to download a tool directly).
   `Unblock-File` only on Overnight's own install folder. Never touch the member's videos (`Documents\Overnight`) or
   Overnight's data folder, except reading its log.
 - **Never post, send or upload anything.** The report in section 11 is for the member to paste.
@@ -82,7 +83,8 @@ $sac = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy
 "Antivirus: " + ((Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue).displayName -join ", ")
 "Documents: " + [Environment]::GetFolderPath("MyDocuments") + "; free GB on " + $env:SystemDrive + " " + [math]::Round((Get-PSDrive ($env:SystemDrive.TrimEnd(":"))).Free / 1GB, 1)
 "ANTHROPIC_API_KEY set: " + [bool]($env:ANTHROPIC_API_KEY -or [Environment]::GetEnvironmentVariable("ANTHROPIC_API_KEY", "User"))
-Add-Type -Namespace OvnCheck -Name Pkg -MemberDefinition "[DllImport(""kernel32.dll"", CharSet = CharSet.Unicode)] public static extern int GetCurrentPackageFullName(ref int length, System.Text.StringBuilder name);"; $n = 0; "App package: " + $(if ([OvnCheck.Pkg]::GetCurrentPackageFullName([ref]$n, $null) -eq 15700) { "no (fine)" } else { "INSIDE one (section 5)" })
+$pn = "overnight-probe-" + [guid]::NewGuid().ToString("N") + ".txt"; Set-Content "$env:APPDATA\$pn" "probe"; $hit = Get-ChildItem "$env:LOCALAPPDATA\Packages\*\LocalCache\Roaming\$pn" -ErrorAction SilentlyContinue; Remove-Item "$env:APPDATA\$pn"; "AppData: " + $(if ($hit) { "REDIRECTED into " + $hit.FullName + " (section 5)" } else { "real (fine)" })
+"TEMP: " + $env:TEMP
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 foreach ($t in "git", "ffmpeg", "python", "claude") { $c = Get-Command $t -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*\WindowsApps\*" } | Select-Object -First 1; "{0,-7} {1}" -f $t, $(if ($c) { $c.Source } else { "not found" }) }
 $exe = "$env:LOCALAPPDATA\Programs\overnight\Overnight.exe"
@@ -94,8 +96,11 @@ Read the results:
 - `ARM64`: Overnight is built for x64 and would run under emulation, untested. Tell the member; go on only if they want.
 - Smart App Control `ON`: its row in section 9 first; the member has a decision to make.
 - `MachinePolicy` or `UserPolicy` set to anything but `Undefined`: an organisation manages this PC (section 9).
-- `App package: INSIDE one`: your shell runs inside an app package (the Claude desktop app on some PCs). What it
-  installs would land in that app's private copy of AppData, invisible to the member. Section 5 says how to run it.
+- `AppData: REDIRECTED`: your shell was started by an app package (the Claude desktop app's shell on Windows does
+  this) and Windows puts what it writes into `%APPDATA%` and parts of `%LOCALAPPDATA%` into that app's private copy,
+  invisible to the member and to Overnight. `%TEMP%`, `%LOCALAPPDATA%\Programs` and the Start menu are not redirected
+  (checked 6 Nov 2026), but Overnight's data folder is. The installer stops at its first step in such a shell: section
+  5 says how to run it, section 7 how to start Overnight and read its log.
 - `claude: not found` is fine when `%USERPROFILE%\.local\bin\claude.exe` exists. Overnight also has its own copy of
   Claude Code built in.
 - Documents inside OneDrive, an antivirus other than Defender, or `ANTHROPIC_API_KEY set: True`: section 9.
@@ -135,15 +140,18 @@ Switches (environment variables, set in the same command):
    Exit code: 0 = all set; 3 = finished, with problems left (the list at the end); 1 = stopped (the last line says why).
    The whole output is also in `%TEMP%\overnight-setup\install.log`.
 
-**Inside an app package** (section 3), the script stops at its first step and says so. Run it outside the package
-instead: if you have a tool that runs a command in the app's Terminal panel (a terminal tab next to the chat), run
-the one-line command below there; its processes run outside the package. Otherwise ask the member to open PowerShell
-themselves (Start menu, type PowerShell, press Enter), paste it, and tell you when it ends. Then read
-`%TEMP%\overnight-setup\install.log` (Windows can show you that file's copy; if what you read looks old, ask the member
-for the last lines they see):
+**AppData redirected** (section 3): the script stops at its first step and says so. Run it where AppData is real:
+- If you have a tool that types a command into the app's **Terminal panel** (a terminal tab next to the chat), use it:
+  its shells are not redirected (checked 6 Nov 2026). It takes literal commands only, so write out your real `%TEMP%`
+  path (section 3 printed it), for example
+  `$env:OVERNIGHT_NO_OPEN = '1'; powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\<name>\AppData\Local\Temp\overnight-setup\install.ps1`
+  (test mode first the same way, with `$env:OVERNIGHT_SETUP_DRY = '1'`; a new tab has neither set). Read its output
+  with your terminal-reading tool.
+- Otherwise ask the member to open PowerShell themselves (Start menu, type PowerShell, press Enter), paste this, and
+  tell you when it ends; then read `%TEMP%\overnight-setup\install.log` (not redirected):
 
 ```powershell
-$env:OVERNIGHT_NO_OPEN = "1"; irm https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.ps1 | iex
 ```
 
 ### Reading the output
@@ -173,9 +181,10 @@ Electron <version>`; on a first start the **Skool sign-in window** opens before 
 `skool check signed out`.
 
 1. If Overnight is already running (section 3, or the installer started it), don't start a second copy: read the log.
-   Otherwise: `Start-Process "$env:LOCALAPPDATA\Programs\overnight\Overnight.exe"`. Inside an app package (section 3)
-   don't start it from your shell (it would inherit the package's private AppData): start it from the Terminal panel,
-   or ask the member to open it from the Start menu.
+   Otherwise: `Start-Process "$env:LOCALAPPDATA\Programs\overnight\Overnight.exe"`. With AppData redirected (section
+   3) don't start it from your shell: it would inherit the private AppData and use the wrong settings and log. Start
+   it from the Terminal panel (`& 'C:\Users\<name>\AppData\Local\Programs\overnight\Overnight.exe'`), or ask the member
+   to open it from the Start menu.
 2. Wait about 20 seconds, then read the last 40 lines:
    `Get-Content "$env:APPDATA\Overnight\logs\overnight.log" -Tail 40`
    and the windows: `Get-Process -Name Overnight | Where-Object MainWindowTitle | Select-Object Id, MainWindowTitle`.
@@ -192,9 +201,9 @@ Electron <version>`; on a first start the **Skool sign-in window** opens before 
    **Set up transcription** starts by itself once Claude is connected.
 
 `skool check offline` / `no answer from Skool (online)`, or no `graphics the window drew` line after the login:
-section 8 and 9. Inside an app package (section 3) you may be reading a private copy of the log: if
-`$env:LOCALAPPDATA\Packages\*\LocalCache\Roaming\Overnight` exists, that copy is not what Overnight uses; read the log
-from the Terminal panel or ask the member.
+section 8 and 9. With AppData redirected (section 3) your shell may show you the private copy of the log, not the
+real one: read it from the Terminal panel (`Get-Content C:\Users\<name>\AppData\Roaming\Overnight\logs\overnight.log -Tail 40`)
+or ask the member.
 
 ## 8. When the window doesn't show
 
@@ -219,7 +228,7 @@ itself (fast, then compatible, then software) and restarts: the log says `graphi
 
 | What you see | What it means | What to do |
 |---|---|---|
-| `Install stopped: this PowerShell runs inside an app package` | Your shell's AppData is a private copy (section 3) | Section 5, "Inside an app package". |
+| `Install stopped: this PowerShell's AppData is redirected into the app package ...` | Your shell's AppData is a private copy (section 3) | Section 5, "AppData redirected". |
 | `winget is not available` | App Installer is not registered for this user (new PC) | Nothing: the script uses the official downloads. To get winget anyway (member's yes): `Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe`. |
 | `winget could not install ... (code -1978335138: something on this PC checks the internet traffic ...)` | An antivirus with HTTPS scanning, a VPN or a proxy | Nothing when the next line is `[ok] ... (official download)`. If that fails too: the member pauses the VPN or allows github.com, gyan.dev and python.org in the antivirus's web protection. Never ask them to turn it off. |
 | `Native installation exists but ...\.local\bin is not in your PATH` (in Claude Code's own lines) | Claude Code's installer doesn't add its folder to the PATH (seen on every test run) | Nothing: the script adds it next (`added ...\.local\bin to your PATH`). Overnight finds it there anyway. |
