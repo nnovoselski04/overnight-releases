@@ -276,6 +276,8 @@ if ($g) { Ok "git already installed ($g)" }
 elseif ((Install-Tool 'git' 'Git.Git' @('--scope', 'user') { Direct-Git }) -and -not $DryRun) {
   $g = Find-Git; if ($g) { Note "git: $g" } else { Problem 'git was installed but is not found. Open a new PowerShell window and run this installer again.' }
 }
+# a per-user Git that is not on the PATH: Overnight only looks for git on the PATH and in Program Files
+if (-not $DryRun -and $g -and -not (Find-Cmd 'git') -and $g -like "$env:LOCALAPPDATA\Programs\Git\*") { Add-UserPath (Split-Path $g); Note "added $(Split-Path $g) to your PATH" }
 $f = Find-Ffmpeg
 if ($f) { Ok "ffmpeg already installed ($f)" }
 elseif ((Install-Tool 'ffmpeg' 'Gyan.FFmpeg' @() { Direct-Ffmpeg }) -and -not $DryRun) {
