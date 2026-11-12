@@ -11,8 +11,11 @@ fixed, write a short report the member can post in the community (section 11).
 **The member said "Fix Overnight for me"** (installed but broken: won't open, stays dark, a step keeps failing)? Your
 job is section 12. It uses sections 1, 2, 3, 7, 8, 9 and 10 too.
 
-Repo: https://github.com/nnovoselski04/overnight-releases. Files: `install.ps1` (Windows installer), `rescue.ps1` (for
-a window that stays dark), `README.md`, this `AGENTS.md`. Raw files:
+**On a Mac** (`uname` says Darwin): your job is section 13, for "Set up" and for "Fix". Sections 1 to 12 are written
+for Windows; section 13 says which of their rules hold on a Mac.
+
+Repo: https://github.com/nnovoselski04/overnight-releases. Files: `install.ps1` (Windows installer), `install.sh` (Mac
+installer), `rescue.ps1` (Windows, for a window that stays dark), `README.md`, this `AGENTS.md`. Raw files:
 `https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/<file>`.
 
 What `install.ps1` puts on the computer (anything already there is skipped; winget first, the official download when
@@ -33,7 +36,7 @@ Shorts (New) and the styles rendered in Blender; only when the member's plan has
 **Set up** (the same as Settings > System > Set up everything), after the Skool login (section 7). Overnight picks up the git, ffmpeg and Python above by itself (the
 PATH, or where those installers put them).
 
-Windows 10 (1809, build 17763) or 11, 64-bit. **Mac: Overnight for Mac is coming; tell the member and stop.** Linux is
+Windows 10 (1809, build 17763) or 11, 64-bit. **Mac (macOS 12 or newer, Apple chip or Intel): section 13.** Linux is
 not supported: tell the member and stop.
 
 ## 1. Rules (they come before everything else)
@@ -73,7 +76,7 @@ not supported: tell the member and stop.
 
 On Windows the blocks here are PowerShell. If your shell is Git Bash, run a block as
 `powershell.exe -NoProfile -Command '<the block>'` (they contain no single quotes). In Windows PowerShell `curl` is not
-curl: type `curl.exe`. On a Mac (`uname` says Darwin): Mac is coming; stop.
+curl: type `curl.exe`. On a Mac (`uname` says Darwin): go to section 13.
 
 ```powershell
 "Windows: " + (Get-CimInstance Win32_OperatingSystem).Caption + ", build " + [Environment]::OSVersion.Version.Build + ", 64-bit: " + [Environment]::Is64BitOperatingSystem + ", " + $env:PROCESSOR_ARCHITECTURE
@@ -319,3 +322,128 @@ Section 1 holds here too. Never touch the member's videos. Work in order; stop a
 4. **Check it works:** start Overnight and read the log (section 7), or ask the member to run the failing step again.
    Say plainly what you changed.
 5. **Not fixed:** the report of section 11, titled "Overnight fix report", with every step you tried.
+
+## 13. On a Mac
+
+Everything here is for macOS (12 Monterey or newer; Apple chip or Intel). Your shell is zsh or bash. Sections 1 and 2
+hold as they are, with these Mac readings: never use `sudo`; never turn off Gatekeeper, SIP or a security tool
+(no `spctl --master-disable`, no `csrutil`); the only places you may change are Overnight's app
+(`/Applications/Overnight.app`, or `~/Applications/Overnight.app`), your download folder `$TMPDIR/overnight-setup`, and
+what `install.sh` itself changes; `xattr -cr` only on Overnight's own app; the only process you may close is Overnight.
+
+What a Mac gets: every style except **Crayon Business Stories** and **3D Story Shorts** (their engines are Windows
+only for now). An **Intel** Mac also has no Blender styles (Minecraft Shorts, the 3D cartoon styles): Blender 5 has no
+Intel Mac build. Tell the member this once, at the start, in one sentence.
+
+What `install.sh` does (anything already there is skipped):
+
+| | Where | Why |
+|---|---|---|
+| git | Apple's Command Line Tools. Missing: it opens Apple's own "Install Command Line Developer Tools" window; **the member clicks Install** (5 to 15 minutes) | every change is saved, so it can be undone |
+| Claude Code | only if `claude` is not found: https://claude.ai/install.sh | Overnight runs your own Claude |
+| Overnight | the newest release with a Mac build for this chip (`Overnight-Mac-AppleChip.dmg` or `Overnight-Mac-Intel.dmg`), copied into `/Applications/Overnight.app` | the app |
+
+Not in the script, on purpose: ffmpeg, Python, Overnight's Python packages, its packs and Blender. On a Mac the app
+installs all of those itself into its own folder: Home > **Install your tools** > **Set up**, after the Skool login.
+Never install Homebrew, ffmpeg, Python or Blender for Overnight yourself.
+
+### 13.1 Which Mac is this?
+
+```bash
+echo "macOS $(sw_vers -productVersion), Apple chip: $(sysctl -n hw.optional.arm64 2>/dev/null || echo 0), shell: $(uname -m)"
+echo "free GB: $(df -g "$HOME" | awk 'NR==2 {print $4}')"
+echo "Command Line Tools: $(xcode-select -p 2>/dev/null || echo 'not installed')"
+echo "claude: $(command -v claude || ls "$HOME/.local/bin/claude" 2>/dev/null || echo 'not found')"
+echo "ANTHROPIC_API_KEY set: $([ -n "${ANTHROPIC_API_KEY:-}" ] && echo true || echo false)"
+for a in /Applications/Overnight.app "$HOME/Applications/Overnight.app"; do [ -d "$a" ] && echo "Overnight: $(defaults read "$a/Contents/Info" CFBundleShortVersionString) in $a"; done
+pgrep -fl "Overnight.app/Contents/MacOS/Overnight" || echo "Overnight is not running"
+```
+
+- macOS below 12: Overnight can't run here. Tell the member (System Settings > General > Software Update) and stop.
+- `Apple chip: 1` takes the AppleChip build even when the shell says `x86_64` (a Rosetta terminal). `0` is an Intel Mac.
+- `Command Line Tools: not installed` is fine: the installer opens Apple's window for it.
+- `ANTHROPIC_API_KEY set: true`: tell the member, never print it (the row in section 9).
+
+### 13.2 Download the installer, read it, run it
+
+Download it to a file and read that file; never pipe it into a shell yourself.
+
+```bash
+mkdir -p "$TMPDIR/overnight-setup" && curl -fsSL -o "$TMPDIR/overnight-setup/install.sh" https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.sh && wc -c "$TMPDIR/overnight-setup/install.sh"
+```
+
+Read the whole script (about 200 lines) and check that it does what this section says. It downloads only from
+api.github.com and github.com (Overnight's releases) and claude.ai (Claude Code). If it differs, stop and tell the
+member. Its switches are those of section 4 (`OVERNIGHT_SETUP_DRY`, `OVERNIGHT_NO_OPEN`, `OVERNIGHT_CLOSE_APP`,
+`OVERNIGHT_REINSTALL`).
+
+1. Test mode first (a few seconds, changes nothing): tell the member in plain words what it found.
+   ```bash
+   OVERNIGHT_SETUP_DRY=1 bash "$TMPDIR/overnight-setup/install.sh"
+   ```
+2. Tell the member: it takes 5 to 15 minutes (Overnight is about 1.3 GB), an Apple window may ask them to install the
+   Command Line Tools, and an open Overnight should be closed. Then the real run, as a background command if your tool
+   can (if it is cut off, run it again: it skips what is done):
+   ```bash
+   OVERNIGHT_NO_OPEN=1 bash "$TMPDIR/overnight-setup/install.sh"
+   ```
+   Exit code: 0 = all set; 3 = finished, with problems left; 1 = stopped (the last lines say why). The output is also in
+   `$TMPDIR/overnight-setup/install.log`. Steps start with `==>`: `This computer`, `git (Apple Command Line Tools)`,
+   `Claude Code`, `Overnight`, `Done`; `[ok]`, `[!]` and `Install stopped:` read as in section 5.
+
+Without Claude, the member can paste this into Terminal (Spotlight, type Terminal, press Enter):
+`curl -fsSL https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.sh | bash`
+
+### 13.3 Start Overnight and prove it started
+
+The log is `~/Library/Application Support/Overnight/logs/overnight.log`. Every start writes a line
+`--- Overnight <version> on darwin, Electron <version>`; on a first start the **Skool sign-in window** opens first and
+the log says `skool check signed out`.
+
+1. Already running (13.1)? Don't start a second copy: read the log. Otherwise `open /Applications/Overnight.app` (or
+   the path the installer printed).
+2. Wait about 20 seconds: `tail -n 40 "$HOME/Library/Application Support/Overnight/logs/overnight.log"` and
+   `pgrep -fl "Overnight.app/Contents/MacOS/Overnight"`.
+3. **It started** when there is a new `--- Overnight <the version you installed> on darwin` line, a `skool check ...`
+   line after it, and an Overnight process. Then the member's steps are those of section 7, points 3 to 5 (log in with
+   Skool; **Connect Claude**; **Install your tools** > **Set up**, which on a Mac also installs ffmpeg and Python).
+4. macOS may ask for the **microphone** when the member records or dictates: that is Overnight's own request; they decide.
+
+### 13.4 Known failures on a Mac
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `"Overnight" can't be opened because Apple cannot check it`, or "Overnight Not Opened" | Overnight is not signed with an Apple Developer ID yet. Happens when the member downloaded the dmg in a browser | With the member's yes: `xattr -cr /Applications/Overnight.app`, then open it again. Or the member: System Settings > Privacy & Security, scroll down, **Open Anyway**, enter the Mac's password. |
+| `"Overnight" is damaged and can't be opened` | The same "downloaded from the internet" mark, on an Apple chip | The same `xattr -cr /Applications/Overnight.app` (only Overnight's app), then open it again. Never tell the member to move it to the Bin. |
+| `git is not on this Mac yet` / Apple's Command Line Tools window | A new Mac has no git | The member clicks **Install** in Apple's window and waits. No window: `xcode-select --install`. Then in Overnight: Install your tools > Set up again. |
+| `could not reach https://github.com/...` / `the download ... did not finish` / `was damaged on the way` | No internet, or a firewall, VPN or web filter blocks github.com | `curl -sI https://github.com | head -1`; the member pauses the VPN or uses another network; run again. |
+| `Overnight ... is open, so it was not updated` | The app was running | The member quits it (Overnight > Quit), or says yes to `OVERNIGHT_CLOSE_APP=1`; run again. |
+| `could not copy Overnight into /Applications` | No permission (a managed Mac, a standard account) or a full disk | The script uses `~/Applications` when `/Applications` can't be written; if that fails too, check free space (13.1). Never `sudo`. |
+| `the copied Overnight did not pass macOS's own check (codesign)` | The copy is incomplete or was changed | Run again. Again: another network, then section 11. |
+| A style is missing (Crayon Business Stories, 3D Story Shorts; on Intel also the Blender styles) | Not on Mac yet | Tell the member; it is not a fault of their Mac. |
+| `skool check offline`, `not a member`, an API key | As on Windows | Their rows in section 9. |
+| The window stays dark | | Wait a minute and read the log (section 8's first paragraph holds: the app steps down a graphics mode by itself). Still dark: the member picks **Software** in Settings > System > Graphics if they can reach it; else section 11. There is no rescue script for Mac. |
+
+### 13.5 Where things live on a Mac
+
+| | |
+|---|---|
+| The app | `/Applications/Overnight.app` (or `~/Applications/Overnight.app`) |
+| Its data (settings, log, its own Python, ffmpeg and tools) | `~/Library/Application Support/Overnight` |
+| Its log | `~/Library/Application Support/Overnight/logs/overnight.log` |
+| The member's videos (never touch) | `~/Documents/Overnight` |
+| Installer output | `$TMPDIR/overnight-setup/install.log` |
+
+### 13.6 Finish, and "Fix Overnight for me" on a Mac
+
+Finish as in section 11: delete your download folder (`rm -rf "$TMPDIR/overnight-setup"`), tell the member the next
+steps (Skool login, Connect Claude, Install your tools > Set up; later they open Overnight from Applications or
+Spotlight), and say which styles are not on Mac yet. Updates on a Mac: Overnight says when a new version is out; the
+member pastes the same "Set up Overnight for me" line again, or downloads the new dmg. When something failed that you
+couldn't fix, write the report of section 11 with `Computer: macOS <version>, <Apple chip or Intel>`.
+
+**Fix** (section 12's order, with Mac commands): ask what's wrong; look (13.1, the last 150 lines of the log, free
+space); fix the cause from 13.4 or section 9; Repair = `OVERNIGHT_REINSTALL=1 bash "$TMPDIR/overnight-setup/install.sh"`
+after the member quit Overnight (projects, settings and the Skool login stay); a failing Install your tools step is
+worked on in Overnight's own setup chat (its lines in the log are `setup: <row>: failed: <why>`); check it works; not
+fixed: the report.
