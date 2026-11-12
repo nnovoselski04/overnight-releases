@@ -1,0 +1,67 @@
+# Runs install.sh end to end on GitHub's Macs (Apple chip and Intel), twice (the second run must find everything in
+# place), then starts Overnight the way a member does and proves the start from its own log.
+name: test-install-mac
+on:
+  push:
+    branches: [installer-mac]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    name: install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - name: What the runner has
+        run: |
+          sw_vers; uname -m; bash --version | head -1
+          xcode-select -p || true; command -v git claude python3 || true
+          ls -d /Applications/Overnight.app 2>/dev/null || echo "Overnight is not installed"
+      - name: Syntax (the Mac's own bash 3.2)
+        run: /bin/bash -n install.sh
+      - name: install.sh, test mode (must change nothing)
+        run: |
+          OVERNIGHT_SETUP_DRY=1 /bin/bash install.sh
+          test ! -d /Applications/Overnight.app
+      - name: install.sh, first run (piped, as the one-line command does)
+        run: cat install.sh | OVERNIGHT_NO_OPEN=1 /bin/bash
+      - name: install.sh, second run (nothing to do)
+        run: |
+          OVERNIGHT_NO_OPEN=1 /bin/bash install.sh | tee second.txt
+          grep -q "is up to date" second.txt
+          grep -q "All set." second.txt
+      - name: Check the app
+        run: |
+          APP=/Applications/Overnight.app
+          defaults read "$APP/Contents/Info" CFBundleShortVersionString
+          codesign --verify --deep --strict "$APP"
+          file "$APP/Contents/MacOS/Overnight"
+          xattr "$APP" || true
+          "$HOME/.local/bin/claude" --version || command -v claude
+          test ! -d "$TMPDIR/overnight-setup/mount/Overnight.app"
+      - name: Start Overnight (Skool window first) and read its log
+        run: |
+          LOG="$HOME/Library/Application Support/Overnight/logs/overnight.log"
+          open /Applications/Overnight.app
+          for i in $(seq 1 60); do
+            sleep 2
+            if [ -f "$LOG" ] && grep -Eq -- '--- Overnight [^ ]+ on darwin' "$LOG" && grep -q 'skool check ' "$LOG"; then break; fi
+          done
+          pgrep -fl "Overnight.app/Contents/MacOS/Overnight" || true
+          echo "--- log:"; head -n 60 "$LOG"
+          grep -Eq -- '--- Overnight [^ ]+ on darwin' "$LOG"
+          grep -q 'skool check ' "$LOG"
+          pkill -f "^/Applications/Overnight.app/Contents/MacOS/Overnight" || true
+      - name: Repair run (OVERNIGHT_REINSTALL)
+        run: |
+          OVERNIGHT_REINSTALL=1 OVERNIGHT_NO_OPEN=1 OVERNIGHT_CLOSE_APP=1 /bin/bash install.sh | tee third.txt
+          grep -q "installed in /Applications/Overnight.app" third.txt
+      - name: Installer log
+        if: always()
+        run: cat "$TMPDIR/overnight-setup/install.log" || true

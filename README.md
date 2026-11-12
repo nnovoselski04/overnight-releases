@@ -4,8 +4,8 @@ Overnight turns a voiceover into a finished video. Claude writes the scenes, and
 
 ## Set up with Claude
 
-Have the Claude desktop app? Open **Claude Code** in it and paste this line. Claude installs Overnight and everything it
-needs (git, ffmpeg, Python, Claude Code), checks that it really opens, and tells you what to do next:
+Have the Claude desktop app? Open **Claude Code** in it and paste this line, on Windows or on a Mac. Claude installs
+Overnight and what it needs (git, ffmpeg, Python, Claude Code), checks that it really opens, and tells you what to do next:
 
 ```
 Set up Overnight for me: https://github.com/nnovoselski04/overnight-releases
@@ -20,11 +20,18 @@ Fix Overnight for me: https://github.com/nnovoselski04/overnight-releases
 **Claude: your instructions are in [AGENTS.md](AGENTS.md). Download it as a file and read every line before you run
 anything** (a summarising web fetch drops the exact commands):
 `curl.exe -fsSL -o "$env:TEMP\overnight-AGENTS.md" https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/AGENTS.md`
+(on a Mac: `curl -fsSL -o "$TMPDIR/overnight-AGENTS.md" <the same address>`, then its section 13)
 
 Without Claude: open **PowerShell** (Start menu, type `PowerShell`, press Enter) and paste:
 
 ```powershell
 irm https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.ps1 | iex
+```
+
+On a Mac: open **Terminal** (Spotlight, type `Terminal`, press Enter) and paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/install.sh | bash
 ```
 
 ## Install by hand
@@ -48,9 +55,20 @@ Overnight updates itself. It checks for a new version in the background, downloa
 | Exports | 10 a month, 1080p | Unlimited, up to 4K |
 | Ultraedit, Style Studio, other languages | No | Yes |
 
-## Mac
+## Mac (by hand)
 
-A Mac version is coming.
+macOS 12 or newer. Apple menu > About This Mac: "Chip: Apple M…" takes the first, "Processor: Intel" the second.
+
+- **[Download Overnight for Mac, Apple chip](https://github.com/nnovoselski04/overnight-releases/releases/latest/download/Overnight-Mac-AppleChip.dmg)**
+- **[Download Overnight for Mac, Intel](https://github.com/nnovoselski04/overnight-releases/releases/latest/download/Overnight-Mac-Intel.dmg)**
+
+1. Open the dmg and drag **Overnight** into **Applications**. Open it from Applications.
+2. macOS says it can't check the app: click **Done**. Then System Settings > Privacy & Security, scroll down, click **Open Anyway** and enter your Mac's password. From then on it opens normally.
+3. If macOS says the app "is damaged": open Terminal, paste `xattr -cr /Applications/Overnight.app`, and open it again.
+4. Log in with **Skool**, then follow the setup checklist on the Home page.
+
+Not on Mac yet: Crayon Business Stories and 3D Story Shorts. An Intel Mac also has no Blender styles. On a Mac,
+Overnight tells you when a new version is out and opens the download; drag the new app into Applications.
 
 ## Help
 
