@@ -106,13 +106,11 @@ running() { [ -n "$APP" ] && pgrep -f "^$APP/Contents/MacOS/Overnight" >/dev/nul
 # the newest release with this chip's dmg. First the plain download link (no GitHub API: its hourly limit per network
 # stops shared connections); when the newest release has no Mac build yet, the API finds the newest one that has
 PICK=''
-LOC="$(curl -fsSI --retry 2 "https://github.com/$OWNER/$REPO/releases/latest/download/$DMG" 2>/dev/null | tr -d '' | awk 'tolower($1) == "location:" {print $2}' | tail -1)"
+LOC="$(curl -fsSI --retry 2 "https://github.com/$OWNER/$REPO/releases/latest/download/$DMG" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "location:" {print $2}' | tail -1)"
 case "$LOC" in "https://github.com/$OWNER/$REPO/releases/download/v"*"/$DMG")
   TAG="${LOC#https://github.com/$OWNER/$REPO/releases/download/}"; TAG="${TAG%%/*}"
-  LEN="$(curl -fsSIL --retry 2 "$LOC" 2>/dev/null | tr -d '' | awk 'tolower($1) == "content-length:" {n = $2} END {print n}')"
-  case "$LEN" in ''|*[!0-9]*) ;; *) [ "$LEN" -gt 100000000 ] && PICK="$(printf '%s
-%s
-%s' "${TAG#v}" "$LEN" "$LOC")" ;; esac ;;
+  LEN="$(curl -fsSIL --retry 2 "$LOC" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" {n = $2} END {print n}')"
+  case "$LEN" in ''|*[!0-9]*) ;; *) [ "$LEN" -gt 100000000 ] && PICK="$(printf '%s\n%s\n%s' "${TAG#v}" "$LEN" "$LOC")" ;; esac ;;
 esac
 if [ -z "$PICK" ]; then
 API="https://api.github.com/repos/$OWNER/$REPO/releases?per_page=10"
