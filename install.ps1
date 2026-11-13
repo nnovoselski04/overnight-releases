@@ -17,6 +17,9 @@
 #                            processes, found by their program path)
 #   OVERNIGHT_REINSTALL=1    repair: install the newest Overnight again even when it is up to date (projects, settings
 #                            and the Skool login stay)
+#   OVERNIGHT_INSTALL_DIR=E:\Overnight   install on another drive: the app in <dir>\app; on a first install the tools and
+#                            data in <dir>\data and new videos in <dir>\videos. Used on a first install or with
+#                            OVERNIGHT_REINSTALL=1; an update keeps the folder Overnight is already in
 #   OVERNIGHT_SETUP_NO_WINGET=1  tests only: skip winget, so the official downloads are what runs
 # How it ends: 0 = all set; 3 = finished, with problems left (listed at the end); 1 = stopped (the reason is printed).
 # Its output also goes to %TEMP%\overnight-setup\install.log.
@@ -36,6 +39,7 @@ $DryRun = [bool]$env:OVERNIGHT_SETUP_DRY
 $NoOpen = [bool]$env:OVERNIGHT_NO_OPEN
 $CloseApp = $env:OVERNIGHT_CLOSE_APP -eq '1'
 $Reinstall = $env:OVERNIGHT_REINSTALL -eq '1'
+$InstallRoot = if ($env:OVERNIGHT_INSTALL_DIR) { [IO.Path]::GetFullPath($env:OVERNIGHT_INSTALL_DIR.Trim().Trim('"')) } else { $null }
 $Problems = New-Object System.Collections.ArrayList   # real problems: the run ends with code 3
 $NextSteps = New-Object System.Collections.ArrayList  # what every member does next (not problems)
 
@@ -388,8 +392,30 @@ else {
       if ($got -ne $latest.sha512) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue; Stop-Install "the download of Overnight $target was damaged on the way (it does not match the release), so it was not run. Run this installer again; if it shows again, an antivirus's web scanning or a proxy changes downloads." }
       Ok 'download checked against the release (sha512)'
     }
-    Note 'Installing (per user, no admin rights) ...'
-    $code = Run-Installer $setup @('/S') 15
+    # OVERNIGHT_INSTALL_DIR: the member's own place (another drive). The app goes to <dir>\app; on a first install the
+    # data (tools, packs) goes to <dir>\data and new videos to <dir>\videos. /D= must be the last argument, unquoted.
+    # Without it the installer keeps the folder Overnight is already in (its registry entry), so an update never moves it
+    $iargs = @('/S')
+    if ($InstallRoot) {
+      try { New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null; $t = Join-Path $InstallRoot '.overnight-write-test'; Set-Content -LiteralPath $t -Value ''; Remove-Item -LiteralPath $t -Force }
+      catch { Stop-Install "Overnight can't write in $InstallRoot ($($_.Exception.Message)). Pick another folder for OVERNIGHT_INSTALL_DIR, or leave it out." }
+      $iargs = @('/S', ('/D=' + (Join-Path $InstallRoot 'app')))
+      Note "Installing into $InstallRoot\app (per user, no admin rights) ..."
+    } else { Note 'Installing (per user, no admin rights) ...' }
+    $code = Run-Installer $setup $iargs 15
+    if ($InstallRoot -and $code -eq 0) {
+      $home0 = Join-Path $env:APPDATA 'Overnight'; $ptr = Join-Path $home0 'data-location.json'
+      if ((Test-Path -LiteralPath (Join-Path $home0 'settings.json')) -or (Test-Path -LiteralPath $ptr)) {
+        [void]$NextSteps.Add("Overnight's tools and data are still where they were. To move them too: Settings > General > Data folder > Move.")
+      } else {
+        $data = Join-Path $InstallRoot 'data'; $vids = Join-Path $InstallRoot 'videos'
+        New-Item -ItemType Directory -Force -Path $home0, $data, $vids | Out-Null
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText($ptr, (@{ dir = $data } | ConvertTo-Json), $utf8)
+        [IO.File]::WriteAllText((Join-Path $data 'settings.json'), (@{ workspace = $vids } | ConvertTo-Json), $utf8)
+        Ok "tools and data will live in $data, videos in $vids"
+      }
+    }
     Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
     $AppDir = Find-AppDir; $AppExe = Join-Path $AppDir 'Overnight.exe'
     $now = App-Version $AppExe
