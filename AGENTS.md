@@ -128,6 +128,12 @@ Switches (environment variables, set in the same command):
 - `OVERNIGHT_NO_OPEN=1`: don't start Overnight at the end (you start it in section 7, to watch the start).
 - `OVERNIGHT_CLOSE_APP=1`: only after the member said yes: an open Overnight may be closed so it can be updated.
 - `OVERNIGHT_REINSTALL=1`: repair: install the newest Overnight again even when it is up to date.
+- `OVERNIGHT_INSTALL_DIR=<folder>`: install on another drive, e.g. `E:\Overnight`. Use it only when the member asks for
+  another drive or folder, or when the system drive has under 15 GB free and another fixed drive has room (ask them
+  which one first). The app goes to `<folder>\app`. On a first install the tools and data go to `<folder>\data` and new
+  videos to `<folder>\videos`. To move an Overnight that is already installed, add `OVERNIGHT_REINSTALL=1` (and close the
+  app): the app moves, and the member moves the tools in Overnight: Settings > General > Data folder > Move. Videos
+  already made stay where they are. An update never changes the folder.
 
 ## 5. Run it
 
