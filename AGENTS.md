@@ -331,9 +331,8 @@ hold as they are, with these Mac readings: never use `sudo`; never turn off Gate
 (`/Applications/Overnight.app`, or `~/Applications/Overnight.app`), your download folder `$TMPDIR/overnight-setup`, and
 what `install.sh` itself changes; `xattr -cr` only on Overnight's own app; the only process you may close is Overnight.
 
-What a Mac gets: every style except **Crayon Business Stories** and **3D Story Shorts** (their engines are Windows
-only for now). An **Intel** Mac also has no Blender styles (Minecraft Shorts, the 3D cartoon styles): Blender 5 has no
-Intel Mac build. Tell the member this once, at the start, in one sentence.
+What a Mac gets: every style on a Mac with an Apple chip. An **Intel** Mac has no Blender styles (Minecraft Shorts, the 3D
+cartoon styles): Blender 5 has no Intel Mac build. Tell an Intel member this once, at the start, in one sentence.
 
 What `install.sh` does (anything already there is skipped):
 
@@ -420,7 +419,8 @@ the log says `skool check signed out`.
 | `Overnight ... is open, so it was not updated` | The app was running | The member quits it (Overnight > Quit), or says yes to `OVERNIGHT_CLOSE_APP=1`; run again. |
 | `could not copy Overnight into /Applications` | No permission (a managed Mac, a standard account) or a full disk | The script uses `~/Applications` when `/Applications` can't be written; if that fails too, check free space (13.1). Never `sudo`. |
 | `the copied Overnight did not pass macOS's own check (codesign)` | The copy is incomplete or was changed | Run again. Again: another network, then section 11. |
-| A style is missing (Crayon Business Stories, 3D Story Shorts; on Intel also the Blender styles) | Not on Mac yet | Tell the member; it is not a fault of their Mac. |
+| A Blender style is missing on an Intel Mac (Minecraft Shorts, the 3D cartoon styles) | Blender 5 has no Intel Mac build | Tell the member; it is not a fault of their Mac. |
+| Crayon: "Not graded: ... longer than Overnight waits" | A Mac has no NVIDIA card, so the colour grade is slower; the film exported without it | The member's choice: in the video's settings, Crayon > **Grade time limit** (0 = wait as long as it takes), then run Grade again. |
 | `skool check offline`, `not a member`, an API key | As on Windows | Their rows in section 9. |
 | The window stays dark | | Wait a minute and read the log (section 8's first paragraph holds: the app steps down a graphics mode by itself). Still dark: the member picks **Software** in Settings > System > Graphics if they can reach it; else section 11. There is no rescue script for Mac. |
 
@@ -438,7 +438,7 @@ the log says `skool check signed out`.
 
 Finish as in section 11: delete your download folder (`rm -rf "$TMPDIR/overnight-setup"`), tell the member the next
 steps (Skool login, Connect Claude, Install your tools > Set up; later they open Overnight from Applications or
-Spotlight), and say which styles are not on Mac yet. Updates on a Mac: Overnight says when a new version is out; the
+Spotlight); on an Intel Mac, say that the Blender styles are not there. Updates on a Mac: Overnight says when a new version is out; the
 member pastes the same "Set up Overnight for me" line again, or downloads the new dmg. When something failed that you
 couldn't fix, write the report of section 11 with `Computer: macOS <version>, <Apple chip or Intel>`.
 

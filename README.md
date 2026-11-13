@@ -67,7 +67,7 @@ macOS 12 or newer. Apple menu > About This Mac: "Chip: Apple M…" takes the fir
 3. If macOS says the app "is damaged": open Terminal, paste `xattr -cr /Applications/Overnight.app`, and open it again.
 4. Log in with **Skool**, then follow the setup checklist on the Home page.
 
-Not on Mac yet: Crayon Business Stories and 3D Story Shorts. An Intel Mac also has no Blender styles. On a Mac,
+An Intel Mac has no Blender styles (Minecraft Shorts, the 3D cartoon styles); every other style is there. On a Mac,
 Overnight tells you when a new version is out and opens the download; drag the new app into Applications.
 
 ## Help
