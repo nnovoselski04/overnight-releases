@@ -402,6 +402,16 @@ else {
       $iargs = @('/S', ('/D=' + (Join-Path $InstallRoot 'app')))
       Note "Installing into $InstallRoot\app (per user, no admin rights) ..."
     } else { Note 'Installing (per user, no admin rights) ...' }
+    # the installed version's style packs go first, by a \\?\ path: Crayon's Chrome in resources\stylepacks is so deep
+    # that the old uninstaller's move to %TEMP% passes Windows' 260 characters and the install stops with code 2
+    # (0.4.6 to 0.4.7). Only Overnight's own install folder; the new version puts the packs back
+    $packs = Join-Path $AppDir 'resources\stylepacks'
+    if ($current -and (Test-Path -LiteralPath $AppExe) -and (Test-Path -LiteralPath $packs)) {
+      $lp = if ($packs.StartsWith('\\')) { '\\?\UNC\' + $packs.Substring(2) } else { '\\?\' + $packs }
+      Note "removing the old version's style packs first ($packs) ..."
+      Invoke-Native { & (Join-Path $env:SystemRoot 'System32\cmd.exe') /c rd /s /q "$lp" 2>&1 | ForEach-Object { Note "$_" } }
+      if (Test-Path -LiteralPath $packs) { Warn "$packs could not be removed completely; if the install stops with code 2, restart the computer and run this installer again." }
+    }
     $code = Run-Installer $setup $iargs 15
     if ($InstallRoot -and $code -eq 0) {
       $home0 = Join-Path $env:APPDATA 'Overnight'; $ptr = Join-Path $home0 'data-location.json'
