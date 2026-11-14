@@ -215,10 +215,17 @@ function Find-AppPython {
 
 # ---- Overnight itself ----
 function Find-AppDir {
-  # where the installer put it (its uninstall entry), else the default per-user folder
-  foreach ($k in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
-    $e = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Overnight' -and $_.InstallLocation } | Select-Object -First 1
-    if ($e -and (Test-Path -LiteralPath (Join-Path $e.InstallLocation 'Overnight.exe'))) { return [string]$e.InstallLocation.TrimEnd('\') }
+  # where the installer put it, else the default per-user folder. electron-builder keeps that folder in
+  # HKCU\Software\<app GUID>\InstallLocation: its uninstall entry (key name = the same GUID) has no InstallLocation, so the
+  # old lookup never matched and a custom-folder install (OVERNIGHT_INSTALL_DIR, e.g. on D:) looked "not installed".
+  # The uninstall entry's UninstallString points into the folder too
+  foreach ($e in @(Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Overnight' })) {
+    $dirs = @()
+    $loc = (Get-ItemProperty -LiteralPath ('HKCU:\Software\' + $e.PSChildName) -ErrorAction SilentlyContinue).InstallLocation
+    if ($loc) { $dirs += [string]$loc }
+    if ($e.InstallLocation) { $dirs += [string]$e.InstallLocation }
+    if ($e.UninstallString -match '^"(.+)\\[^\\"]+\.exe"') { $dirs += $Matches[1] }
+    foreach ($d in $dirs) { if (Test-Path -LiteralPath (Join-Path $d 'Overnight.exe')) { return $d.TrimEnd('\') } }
   }
   return (Join-Path $env:LOCALAPPDATA 'Programs\overnight')
 }
