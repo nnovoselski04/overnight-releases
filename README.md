@@ -40,12 +40,23 @@ curl -fsSL https://raw.githubusercontent.com/nnovoselski04/overnight-releases/ma
 
 1. Open `Overnight-Setup.exe`. It installs in about 30 seconds and doesn't need admin rights.
 2. Windows may show **"Windows protected your PC"**. This is normal for a new app. Click **More info**, then **Run anyway**.
+   **"Smart App Control blocked an app that may be unsafe"** (Windows 11) has no Run anyway: Smart App Control only lets
+   signed apps start, and Overnight is not code-signed yet. To check the file is ours, run `Get-FileHash` on it in
+   PowerShell (for example `Get-FileHash $env:USERPROFILE\Downloads\Overnight-Setup.exe`): the SHA-256 must match
+   `SHA256SUMS.txt` on the [latest release](https://github.com/nnovoselski04/overnight-releases/releases/latest). To
+   install Overnight, Smart App Control has to be off: Windows Security > App & browser control > Smart App Control >
+   Off. That is your decision: on many Windows 11 versions it can only be turned on again by resetting Windows. The
+   one-line installer above can't get around it either.
 3. Log in with your **Skool** account. Overnight comes with the [Overnight community on Skool](https://www.skool.com/overnight-ai-video-automation-5588), and your tier there sets your plan.
 4. Follow the setup checklist on the Home page. It connects your own **Claude** (Claude Code with your Claude plan) and checks or installs the tools the app needs: git, ffmpeg and Python.
 
 ## Updates
 
 Overnight updates itself. It checks for a new version in the background, downloads only what changed, and installs it when you close the app (or press **Restart now** in Settings > Updates). Your projects and settings stay.
+
+An update that says **"Failed to uninstall old application files"**, or one that closed Overnight and left it on the
+old version (0.4.9 and older): run the one-line installer above. It moves the old version aside and installs the new
+one into an empty folder; your projects, settings and Skool login stay.
 
 ## Plans
 

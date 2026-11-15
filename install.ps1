@@ -215,12 +215,125 @@ function Find-AppPython {
 
 # ---- Overnight itself ----
 function Find-AppDir {
-  # where the installer put it (its uninstall entry), else the default per-user folder
-  foreach ($k in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
-    $e = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Overnight' -and $_.InstallLocation } | Select-Object -First 1
-    if ($e -and (Test-Path -LiteralPath (Join-Path $e.InstallLocation 'Overnight.exe'))) { return [string]$e.InstallLocation.TrimEnd('\') }
+  # where the installer put it, else the default per-user folder. electron-builder keeps that folder in
+  # HKCU\Software\<app GUID>\InstallLocation: its uninstall entry (key name = the same GUID) has no InstallLocation, so the
+  # old lookup never matched and a custom-folder install (OVERNIGHT_INSTALL_DIR, e.g. on D:) looked "not installed".
+  # The uninstall entry's UninstallString points into the folder too
+  foreach ($e in @(Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Overnight' })) {
+    $dirs = @()
+    $loc = (Get-ItemProperty -LiteralPath ('HKCU:\Software\' + $e.PSChildName) -ErrorAction SilentlyContinue).InstallLocation
+    if ($loc) { $dirs += [string]$loc }
+    if ($e.InstallLocation) { $dirs += [string]$e.InstallLocation }
+    if ($e.UninstallString -match '^"(.+)\\[^\\"]+\.exe"') { $dirs += $Matches[1] }
+    foreach ($d in $dirs) { if (Test-Path -LiteralPath (Join-Path $d 'Overnight.exe')) { return $d.TrimEnd('\') } }
+    # (an update that stopped after moving the old version aside: Recover-Aside puts it back)
+    foreach ($d in $dirs) { if (Test-Path -LiteralPath (Join-Path ($d.TrimEnd('\') + '.ovn-old') 'Overnight.exe')) { return $d.TrimEnd('\') } }
   }
   return (Join-Path $env:LOCALAPPDATA 'Programs\overnight')
+}
+# ---- an update moves the installed version aside first (same drive: each move is one rename, the files inside are not
+# touched), the installer puts the new version into the emptied folder, and the old one is deleted after that worked or
+# put back when it didn't. The old version's own uninstaller then has nothing to move: it used to move every file into
+# %TEMP%, which stopped the update with code 2 ("Failed to uninstall old application files") when a path got past
+# Windows' 260 characters there (Crayon's Chrome in resources\stylepacks, 0.4.6 to 0.4.9) or a file was in use, and
+# copied a D: install to C: first. The move: the whole folder in one rename, or, when Windows refuses that because some
+# program has the folder as its working folder (anything Overnight opened inherits it: Windows Photos for a rendered
+# video, a player, Explorer; they outlive the app), its entries one by one. This works with every Overnight installer,
+# 0.4.9's included. Installers after 0.4.9 do the same themselves (build/installer.nsh)
+function Long-Path($p) { if ($p.StartsWith('\\')) { '\\?\UNC\' + $p.Substring(2) } else { '\\?\' + $p } }
+function Remove-Tree($p) {
+  # rd by a \\?\ path: no length limit. A folder that is some program's working folder stays, empty
+  if (Test-Path -LiteralPath $p) { Invoke-Native { & (Join-Path $env:SystemRoot 'System32\cmd.exe') /c rd /s /q "$(Long-Path $p)" 2>&1 | Out-Null } }
+}
+function App-Only($dir) {
+  # only what an Overnight install puts there, so moving and deleting the folder can never take a member's own files
+  foreach ($e in @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop)) {
+    if ($e.PSIsContainer) { if (@('resources', 'locales', 'swiftshader') -notcontains $e.Name) { return $false } }
+    elseif (@('.exe', '.dll', '.pak', '.dat', '.bin', '.json', '.txt', '.html', '.ico', '.log') -notcontains $e.Extension.ToLower()) { return $false }
+  }
+  return $true
+}
+function Folder-Procs($dir) {
+  # every program running from the folder: Overnight, and its Chrome, Claude Code or render helpers left behind
+  $pre = $dir.TrimEnd('\') + '\'
+  @(Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($pre, [StringComparison]::OrdinalIgnoreCase) })
+}
+function Move-Entries($src, $dst, $depth = 0) {
+  # the entries of $src into $dst, one rename each; a folder that refuses (someone's working folder, or one above it) is
+  # entered and stays behind empty. Returns the first entry that would not move (a file really in use), $null = all moved
+  $bad = $null
+  for ($pass = 0; $pass -lt 4; $pass++) {
+    $bad = $null; $moved = 0
+    foreach ($e in @(Get-ChildItem -LiteralPath $src -Force -ErrorAction SilentlyContinue)) {
+      $to = Join-Path $dst $e.Name
+      try { if ($e.PSIsContainer) { [IO.Directory]::Move($e.FullName, $to) } else { [IO.File]::Move($e.FullName, $to) }; $moved++ }
+      catch {
+        if ($e.PSIsContainer -and $depth -lt 16) { [void][IO.Directory]::CreateDirectory($to); $b = Move-Entries $e.FullName $to ($depth + 1); if ($b -and -not $bad) { $bad = $b } }
+        elseif (-not $bad) { $bad = $e.FullName }
+      }
+    }
+    if (-not $moved) { break }
+  }
+  return $bad
+}
+function Put-Back($aside, $dir, $exe = 'Overnight.exe') {
+  # the old version back where it was: the half-installed files go, then the aside folder in one rename, or its entries
+  # one by one into a folder some program still works in
+  if (-not $aside -or -not (Test-Path -LiteralPath (Join-Path $aside $exe))) { return $false }
+  Remove-Tree $dir
+  try { [IO.Directory]::Move($aside, $dir) }
+  catch {
+    [void][IO.Directory]::CreateDirectory($dir)
+    $bad = Move-Entries $aside $dir
+    if ($bad) {
+      [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
+      Warn "could not put the old version back completely ($bad would not move): the next run of this installer does it"
+      return $false
+    }
+    Remove-Tree $aside
+  }
+  Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue
+  return $true
+}
+function Recover-Aside($dir, $exe = 'Overnight.exe') {
+  # an earlier run that stopped between the move and the end of the install (marked, or the app is only in the aside
+  # folder): the old version goes back first. Otherwise the old files of an update that worked
+  $aside = "$dir.ovn-old"
+  if (-not (Test-Path -LiteralPath $aside)) { return }
+  if ((Test-Path -LiteralPath (Join-Path $aside $exe)) -and ((Test-Path -LiteralPath (Join-Path $aside '.ovn-moved')) -or -not (Test-Path -LiteralPath (Join-Path $dir $exe)))) {
+    Note "an earlier update stopped half way: putting the version it had moved aside back ($dir)"
+    [void](Put-Back $aside $dir $exe)
+  } elseif (-not (Test-Path -LiteralPath (Join-Path $aside '.ovn-moved'))) { Remove-Tree $aside }
+}
+function Move-OldApp($dir, $exe = 'Overnight.exe') {
+  # the aside folder, or $null when the folder holds other files too (then the old version's uninstaller removes it, as
+  # before). Stops the install, with nothing changed, when another program really holds a file in the folder
+  if (-not (App-Only $dir)) { Note "$dir holds files Overnight did not put there: the old version's own uninstaller removes it"; return $null }
+  $aside = "$dir.ovn-old"
+  Remove-Tree $aside
+  $how = $null
+  for ($i = 0; $i -lt 4 -and -not $how; $i++) {
+    try { [IO.Directory]::Move($dir, $aside); $how = 'in one rename' } catch { Start-Sleep -Seconds 1 }
+  }
+  if (-not $how) {
+    # refused: a program works in the folder (or holds a file). Its entries, marked first so a run that dies half way is
+    # put back by the next one
+    [void][IO.Directory]::CreateDirectory($aside)
+    [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
+    $bad = Move-Entries $dir $aside
+    if ($bad) {
+      $back = Move-Entries $aside $dir
+      if (-not $back) { Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue; Remove-Tree $aside }
+      else { [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir) }   # (the next run of this installer puts the rest back)
+      $p = @(Folder-Procs $dir | ForEach-Object { $_.Name -replace '\.exe$', '' } | Select-Object -Unique)
+      if ($p.Count) { Stop-Install "Overnight was not updated: $($p -join ', ') is using a file in its folder ($bad). Close it, then run this installer again. Nothing was changed: the version you have still works." }
+      Stop-Install "Overnight was not updated: another program is using a file in its folder ($bad). Close that program, then run this installer again (if you can't find it, restart the computer first). Nothing was changed: the version you have still works."
+    }
+    $how = 'entry by entry (a program works in that folder)'
+  }
+  [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
+  Note "moved the installed version aside $how ($aside): it is deleted once the new one is in"
+  return $aside
 }
 function App-Version($exe) {
   if (-not (Test-Path -LiteralPath $exe)) { return $null }
@@ -229,7 +342,7 @@ function App-Version($exe) {
   if (-not $v -or $v -eq '0.0.0') { return $null }
   return $v
 }
-function App-Procs($exe) { @(Get-Process -Name 'Overnight' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -ieq $exe }) }
+function App-Procs($exe) { @(Get-Process -Name 'Overnight' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -ieq $exe }) + @(Folder-Procs (Split-Path $exe) | ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } | Where-Object { $_.Name -ne 'Overnight' }) }
 function Latest-Release {
   # the release's own update file: version, installer file name, sha512 (no GitHub API rate limit)
   try { $yml = Web-Get "https://github.com/$Owner/$Repo/releases/latest/download/latest.yml" } catch { return $null }
@@ -275,7 +388,12 @@ $free = $null; try { $free = [math]::Round((Get-PSDrive ($env:SystemDrive.TrimEn
 if ($null -ne $free) { if ($free -lt 10) { Warn "only $free GB free on $env:SystemDrive. Overnight and its tools need about 6 GB, its videos more." } else { Ok "$free GB free on $env:SystemDrive" } }
 $sac = $null
 try { $sac = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name 'VerifiedAndReputablePolicyState' -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState } catch { }
-if ($sac -eq 1) { Warn 'Smart App Control is On. It can block the Python packages Overnight uses (transcription, WinError 4551). Turning it off is your decision: Windows Security > App & browser control > Smart App Control.' }
+# Smart App Control lets only signed programs, or ones Microsoft already knows, start. Overnight is not code-signed yet,
+# so with it On Windows can block Overnight's installer and the app itself, and the Python packages it uses (WinError
+# 4551). Nothing in this script can get around it without a signature: the member decides
+$SacHow = 'Turning Smart App Control off is your decision: Windows Security > App & browser control > Smart App Control > Off (on most Windows 11 versions it can only be turned on again by resetting Windows). Then run this installer again.'
+if ($sac -eq 1) { Warn "Smart App Control is On. It may block Overnight (not code-signed yet) and the Python packages it uses (transcription, WinError 4551). $SacHow" }
+elseif ($sac -eq 2) { Note 'Smart App Control is in evaluation mode: if Windows turns it On later, it may block Overnight (not code-signed yet).' }
 
 Step 'Windows Package Manager (winget)'
 Refresh-Path
@@ -359,6 +477,7 @@ if (-not $DryRun -and $cl -eq $claudeHome -and -not (([Environment]::GetEnvironm
 # ---- Overnight ----
 Step 'Overnight'
 $AppDir = Find-AppDir
+if (-not $DryRun) { Recover-Aside $AppDir }
 $AppExe = Join-Path $AppDir 'Overnight.exe'
 $current = App-Version $AppExe
 $latest = Latest-Release
@@ -392,6 +511,7 @@ else {
       if ($got -ne $latest.sha512) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue; Stop-Install "the download of Overnight $target was damaged on the way (it does not match the release), so it was not run. Run this installer again; if it shows again, an antivirus's web scanning or a proxy changes downloads." }
       Ok 'download checked against the release (sha512)'
     }
+    try { Note "SHA-256 of the installer: $((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash) (the release page lists the same in SHA256SUMS.txt)" } catch { }
     # OVERNIGHT_INSTALL_DIR: the member's own place (another drive). The app goes to <dir>\app; on a first install the
     # data (tools, packs) goes to <dir>\data and new videos to <dir>\videos. /D= must be the last argument, unquoted.
     # Without it the installer keeps the folder Overnight is already in (its registry entry), so an update never moves it
@@ -402,7 +522,26 @@ else {
       $iargs = @('/S', ('/D=' + (Join-Path $InstallRoot 'app')))
       Note "Installing into $InstallRoot\app (per user, no admin rights) ..."
     } else { Note 'Installing (per user, no admin rights) ...' }
-    $code = Run-Installer $setup $iargs 15
+    # the installed version moves aside first (Move-OldApp). When the folder holds other files too, the old route: its
+    # style packs go by a \\?\ path (Crayon's Chrome there is the path that got too long), then its own uninstaller
+    $oldDir = $AppDir; $aside = $null
+    if ($current -and (Test-Path -LiteralPath $AppExe)) { $aside = Move-OldApp $AppDir }
+    $packs = Join-Path $AppDir 'resources\stylepacks'
+    if (-not $aside -and $current -and (Test-Path -LiteralPath $AppExe) -and (Test-Path -LiteralPath $packs)) {
+      Note "removing the old version's style packs first ($packs) ..."
+      Remove-Tree $packs
+      if (Test-Path -LiteralPath $packs) { Warn "$packs could not be removed completely; if the install stops with code 2, restart the computer and run this installer again." }
+    }
+    try { $code = Run-Installer $setup $iargs 15 }
+    catch {
+      # (an installer still running after 15 minutes keeps its folder: the next run of this script puts the old one back)
+      $back = if ("$($_.Exception.Message)" -notmatch 'did not finish in') { Put-Back $aside $oldDir } else { $false }
+      $kept = if ($back) { ' The version you had is back.' } else { '' }
+      if ($Sac -eq 1 -or "$($_.Exception.Message)" -match 'Application Control|Smart App|4551|blocked') {
+        Stop-Install "Windows did not let the Overnight installer start ($($_.Exception.Message)). Smart App Control is On, and it blocks Overnight because Overnight is not code-signed yet.$kept $SacHow"
+      }
+      Stop-Install "the Overnight installer could not run ($($_.Exception.Message)).$kept Run this installer again; if it shows again, restart the computer first."
+    }
     if ($InstallRoot -and $code -eq 0) {
       $home0 = Join-Path $env:APPDATA 'Overnight'; $ptr = Join-Path $home0 'data-location.json'
       if ((Test-Path -LiteralPath (Join-Path $home0 'settings.json')) -or (Test-Path -LiteralPath $ptr)) {
@@ -419,7 +558,16 @@ else {
     Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
     $AppDir = Find-AppDir; $AppExe = Join-Path $AppDir 'Overnight.exe'
     $now = App-Version $AppExe
-    if ($code -ne 0 -or -not $now) { Stop-Install "the Overnight installer did not finish (code $code). An antivirus may have blocked it: check its quarantine, then run this installer again." }
+    if ($code -ne 0 -or -not $now) {
+      $kept = if (Put-Back $aside $oldDir) { ' The version you had is back and still works.' } else { '' }
+      if ($code -eq 2) { Stop-Install "the Overnight installer stopped (code 2): Windows did not let it replace Overnight's files, or a program is using one of them.$kept Restart the computer, then run this installer again." }
+      Stop-Install "the Overnight installer did not finish (code $code).$kept An antivirus may have blocked it: check its quarantine, then run this installer again."
+    }
+    if ($aside) {
+      Remove-Item -LiteralPath (Join-Path $aside '.ovn-moved') -Force -ErrorAction SilentlyContinue
+      Remove-Tree $aside
+      if (Test-Path -LiteralPath $aside) { Note "the old version's folder $aside could not be removed completely; the next update removes it" } else { Note 'the old version''s files are removed' }
+    }
     if ((Ver $now) -ne (Ver $target)) { Problem "Overnight says version $now after installing $target. Restart the computer and run this installer again." }
     else { Ok "Overnight $now installed$(if ($current) { " (was $current)" }) in $AppDir" }
   }

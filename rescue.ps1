@@ -1,8 +1,9 @@
 # Overnight rescue for Windows: for an Overnight window that stays black, dark or empty.
 #   irm https://raw.githubusercontent.com/nnovoselski04/overnight-releases/main/rescue.ps1 | iex
-# Closes Overnight (only Overnight's own processes) and starts it once with software graphics (--software-graphics:
-# drawn by the processor, slower, but it always shows). That start only: to keep it, pick Software in Overnight's
-# Settings > System > Graphics once the window shows (Auto, the default, already steps down by itself when it can).
+# Closes Overnight (only Overnight's own processes) and starts it once without the graphics card (--software-graphics:
+# drawn by the processor, slower, but it always shows; in versions after 0.4.9 there is no graphics process left to crash in that
+# start). That start only: to keep it, pick No graphics card (Software in 0.4.9 and older) in Overnight's Settings >
+# System > Graphics once the window shows. Versions after 0.4.9 switch to it by themselves when the graphics crash at start.
 # Projects, settings and the Skool login are not touched. Plain ASCII: Windows PowerShell 5.1 runs it through irm | iex.
 # OVERNIGHT_SETUP_DRY=1: test mode, nothing is closed or started.
 
@@ -37,12 +38,13 @@ try {
     if ((& $own).Count) { Warn 'it is still closing; if Overnight does not open below, restart the computer and run this again' } else { Ok 'closed' }
   }
 
-  Write-Host ''; Write-Host '==> Starting Overnight with software graphics' -ForegroundColor White
+  Write-Host ''; Write-Host '==> Starting Overnight without the graphics card' -ForegroundColor White
   if ($DryRun) { Note "(test mode) would start $exe --software-graphics" }
-  else { Start-Process -FilePath $exe -ArgumentList '--software-graphics'; Ok 'started (slower drawing, but it always shows)' }
+  else { Start-Process -FilePath $exe -ArgumentList '--software-graphics'; Ok 'started (slower drawing, but it shows)' }
   Write-Host ''
-  Write-Host 'This rescue start is not saved. To keep software graphics for the next starts: once the window shows,' -ForegroundColor White
-  Write-Host 'Settings > System > Graphics > Software.' -ForegroundColor White
+  Write-Host 'This rescue start is not saved. To keep it for the next starts: once the window shows,' -ForegroundColor White
+  Write-Host 'Settings > System > Graphics > No graphics card (Software in 0.4.9 and older).' -ForegroundColor White
+  Write-Host 'Still blank? Update Overnight (run the install command again): newer versions get past a graphics crash at start.' -ForegroundColor White
 }
 catch { if ("$_" -ne 'OVN_STOP') { Write-Host ''; Write-Host "Rescue stopped: $_" -ForegroundColor Red } }
 }
