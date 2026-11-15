@@ -15,7 +15,7 @@ if (-not $old -or -not $new) { throw "the probe installers are not built in $Roo
 # the functions, taken from install.ps1 itself (its AST), with the output helpers they call
 $src = Join-Path $PSScriptRoot '..\install.ps1'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $src), [ref]$null, [ref]$null)
-$want = 'Long-Path', 'Remove-Tree', 'App-Only', 'Folder-Procs', 'Recover-Aside', 'Move-OldApp', 'Put-Back', 'Invoke-Native'
+$want = 'Long-Path', 'Remove-Tree', 'App-Only', 'Folder-Procs', 'Recover-Aside', 'Move-OldApp', 'Move-Entries', 'Put-Back', 'Invoke-Native'
 foreach ($f in $ast.FindAll({ param($a) $a -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { if ($want -contains $f.Name) { . ([scriptblock]::Create($f.Extent.Text)) } }
 function Note($t) { Write-Host "    $t" -ForegroundColor DarkGray }
 function Warn($t) { Write-Host "    [!] $t" -ForegroundColor Yellow }
@@ -64,7 +64,7 @@ try {
   $h = [IO.File]::Open((Join-Path $dir 'resources\app.asar'), 'Open', 'Read', 'Read')
   $msg = $null; try { [void](Move-OldApp $dir $exeName) } catch { $msg = "$_" }
   $h.Close()
-  Check ($msg -eq 'OVN_STOP' -and (Ver $dir) -eq '1.0.0' -and -not (Test-Path -LiteralPath "$dir.ovn-old")) 'a held file: the install stops, nothing moved, the old version is whole'
+  Check ($msg -eq 'OVN_STOP' -and (Ver $dir) -eq '1.0.0' -and -not (Test-Path -LiteralPath "$dir.ovn-old") -and (Test-Path -LiteralPath (Join-Path $dir 'resources\app.asar')) -and -not (Test-Path -LiteralPath (Join-Path $dir '.ovn-moved'))) 'a held file: the install stops, everything is back, the old version is whole'
 
   # 3. an install that failed after the move: Put-Back
   $aside = Move-OldApp $dir $exeName
@@ -79,9 +79,30 @@ try {
   Recover-Aside $dir $exeName
   Check (-not (Test-Path -LiteralPath "$dir.ovn-old") -and (Ver $dir) -eq '1.0.0') 'Recover-Aside: an unmarked leftover is deleted, the install stays'
 
+  # 6. a program works in the install folder (Windows Photos opened from the app, 15 Nov): the folder can't be renamed,
+  # its entries move one by one, and the stock installer then works
+  Clean
+  [void](Install $old.FullName @('/S', "/D=$dir")); Over260 $dir
+  $cm = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\charmap.exe') -WorkingDirectory $dir -PassThru; Start-Sleep -Seconds 2
+  $refused = $false; try { [IO.Directory]::Move($dir, "$dir.try") ; [IO.Directory]::Move("$dir.try", $dir) } catch { $refused = $true }
+  $aside = Move-OldApp $dir $exeName
+  Check ($refused -and $aside -and (Test-Path -LiteralPath (Join-Path $aside $exeName)) -and (Test-Path -LiteralPath $dir) -and -not (Test-Path -LiteralPath (Join-Path $dir $exeName))) "a working folder: the rename is refused ($refused), the entries moved aside one by one"
+  $code = Install $new.FullName @('/S')
+  Check ($code -eq 0 -and (Ver $dir) -eq '1.0.1') "then the stock installer works into the emptied folder (code $code, now $(Ver $dir))"
+  Remove-Item -LiteralPath (Join-Path $aside '.ovn-moved') -Force; Remove-Tree $aside
+  Check (-not (Test-Path -LiteralPath $aside)) 'the old entries, path over 260 and all, are deleted'
+  # 7. Put-Back and Recover-Aside into a folder a program works in
+  $aside = Move-OldApp $dir $exeName
+  Set-Content -LiteralPath (Join-Path $dir 'half.txt') -Value 'half'
+  Check ((Put-Back $aside $dir $exeName) -and (Ver $dir) -eq '1.0.1' -and -not (Test-Path -LiteralPath $aside) -and -not (Test-Path -LiteralPath (Join-Path $dir 'half.txt')) -and -not (Test-Path -LiteralPath (Join-Path $dir '.ovn-moved'))) 'Put-Back into a working folder: entry by entry, the half install gone'
+  $aside = Move-OldApp $dir $exeName
+  Recover-Aside $dir $exeName
+  Check ((Ver $dir) -eq '1.0.1' -and -not (Test-Path -LiteralPath $aside)) 'Recover-Aside into a working folder: the old version is back'
+  Stop-Process -Id $cm.Id -Force -EA SilentlyContinue; Start-Sleep -Seconds 1
+
   # 5. a folder with the member's own files in it keeps the old route
   New-Item -ItemType Directory -Force -Path (Join-Path $dir 'videos') | Out-Null
   Check ($null -eq (Move-OldApp $dir $exeName) -and (Test-Path -LiteralPath (Join-Path $dir 'videos'))) 'a folder with other files is not moved (the old route)'
 }
-finally { Clean; Set-Content -LiteralPath $stop -Value ''; Start-Sleep -Seconds 1; try { $watch | Stop-Process -Force -EA SilentlyContinue } catch { } }
+finally { try { if ($cm) { Stop-Process -Id $cm.Id -Force -EA SilentlyContinue } } catch { }; Clean; Set-Content -LiteralPath $stop -Value ''; Start-Sleep -Seconds 1; try { $watch | Stop-Process -Force -EA SilentlyContinue } catch { } }
 if ($fails) { Write-Host "$fails check(s) failed" -ForegroundColor Red; exit 1 } else { Write-Host 'all checks passed' -ForegroundColor Green; exit 0 }

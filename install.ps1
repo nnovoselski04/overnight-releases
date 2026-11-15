@@ -231,15 +231,18 @@ function Find-AppDir {
   }
   return (Join-Path $env:LOCALAPPDATA 'Programs\overnight')
 }
-# ---- an update moves the installed version aside in ONE rename (same drive, its files untouched), the installer puts the
-# new version into an empty folder, and the old one is deleted after that worked or put back when it didn't. The old
-# version's own uninstaller then has nothing to move: it used to move every file into %TEMP%, which stopped the update
-# with code 2 ("Failed to uninstall old application files") when a path got past Windows' 260 characters there (Crayon's
-# Chrome in resources\stylepacks, 0.4.6 to 0.4.9) or a file was in use, and copied a D: install to C: first. This works
-# with every Overnight installer, 0.4.9's included. Installers after 0.4.9 do the same themselves (build/installer.nsh)
+# ---- an update moves the installed version aside first (same drive: each move is one rename, the files inside are not
+# touched), the installer puts the new version into the emptied folder, and the old one is deleted after that worked or
+# put back when it didn't. The old version's own uninstaller then has nothing to move: it used to move every file into
+# %TEMP%, which stopped the update with code 2 ("Failed to uninstall old application files") when a path got past
+# Windows' 260 characters there (Crayon's Chrome in resources\stylepacks, 0.4.6 to 0.4.9) or a file was in use, and
+# copied a D: install to C: first. The move: the whole folder in one rename, or, when Windows refuses that because some
+# program has the folder as its working folder (anything Overnight opened inherits it: Windows Photos for a rendered
+# video, a player, Explorer; they outlive the app), its entries one by one. This works with every Overnight installer,
+# 0.4.9's included. Installers after 0.4.9 do the same themselves (build/installer.nsh)
 function Long-Path($p) { if ($p.StartsWith('\\')) { '\\?\UNC\' + $p.Substring(2) } else { '\\?\' + $p } }
 function Remove-Tree($p) {
-  # rd by a \\?\ path: no length limit
+  # rd by a \\?\ path: no length limit. A folder that is some program's working folder stays, empty
   if (Test-Path -LiteralPath $p) { Invoke-Native { & (Join-Path $env:SystemRoot 'System32\cmd.exe') /c rd /s /q "$(Long-Path $p)" 2>&1 | Out-Null } }
 }
 function App-Only($dir) {
@@ -255,40 +258,82 @@ function Folder-Procs($dir) {
   $pre = $dir.TrimEnd('\') + '\'
   @(Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($pre, [StringComparison]::OrdinalIgnoreCase) })
 }
+function Move-Entries($src, $dst, $depth = 0) {
+  # the entries of $src into $dst, one rename each; a folder that refuses (someone's working folder, or one above it) is
+  # entered and stays behind empty. Returns the first entry that would not move (a file really in use), $null = all moved
+  $bad = $null
+  for ($pass = 0; $pass -lt 4; $pass++) {
+    $bad = $null; $moved = 0
+    foreach ($e in @(Get-ChildItem -LiteralPath $src -Force -ErrorAction SilentlyContinue)) {
+      $to = Join-Path $dst $e.Name
+      try { if ($e.PSIsContainer) { [IO.Directory]::Move($e.FullName, $to) } else { [IO.File]::Move($e.FullName, $to) }; $moved++ }
+      catch {
+        if ($e.PSIsContainer -and $depth -lt 16) { [void][IO.Directory]::CreateDirectory($to); $b = Move-Entries $e.FullName $to ($depth + 1); if ($b -and -not $bad) { $bad = $b } }
+        elseif (-not $bad) { $bad = $e.FullName }
+      }
+    }
+    if (-not $moved) { break }
+  }
+  return $bad
+}
+function Put-Back($aside, $dir, $exe = 'Overnight.exe') {
+  # the old version back where it was: the half-installed files go, then the aside folder in one rename, or its entries
+  # one by one into a folder some program still works in
+  if (-not $aside -or -not (Test-Path -LiteralPath (Join-Path $aside $exe))) { return $false }
+  Remove-Tree $dir
+  try { [IO.Directory]::Move($aside, $dir) }
+  catch {
+    [void][IO.Directory]::CreateDirectory($dir)
+    $bad = Move-Entries $aside $dir
+    if ($bad) {
+      [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
+      Warn "could not put the old version back completely ($bad would not move): the next run of this installer does it"
+      return $false
+    }
+    Remove-Tree $aside
+  }
+  Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue
+  return $true
+}
 function Recover-Aside($dir, $exe = 'Overnight.exe') {
-  # an earlier run that stopped between the rename and the end of the install: the old version goes back first
+  # an earlier run that stopped between the move and the end of the install (marked, or the app is only in the aside
+  # folder): the old version goes back first. Otherwise the old files of an update that worked
   $aside = "$dir.ovn-old"
   if (-not (Test-Path -LiteralPath $aside)) { return }
-  if ((Test-Path -LiteralPath (Join-Path $aside '.ovn-moved')) -and (Test-Path -LiteralPath (Join-Path $aside $exe))) {
+  if ((Test-Path -LiteralPath (Join-Path $aside $exe)) -and ((Test-Path -LiteralPath (Join-Path $aside '.ovn-moved')) -or -not (Test-Path -LiteralPath (Join-Path $dir $exe)))) {
     Note "an earlier update stopped half way: putting the version it had moved aside back ($dir)"
-    Remove-Tree $dir
-    try { [IO.Directory]::Move($aside, $dir); Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue }
-    catch { Warn "could not put $aside back to $dir ($($_.Exception.Message)). Restart the computer and run this installer again." }
-  } else { Remove-Tree $aside }   # (the old files of an update that worked)
+    [void](Put-Back $aside $dir $exe)
+  } elseif (-not (Test-Path -LiteralPath (Join-Path $aside '.ovn-moved'))) { Remove-Tree $aside }
 }
 function Move-OldApp($dir, $exe = 'Overnight.exe') {
   # the aside folder, or $null when the folder holds other files too (then the old version's uninstaller removes it, as
-  # before). Stops the install, with nothing changed, when something holds a file in the folder
+  # before). Stops the install, with nothing changed, when another program really holds a file in the folder
   if (-not (App-Only $dir)) { Note "$dir holds files Overnight did not put there: the old version's own uninstaller removes it"; return $null }
   $aside = "$dir.ovn-old"
   Remove-Tree $aside
-  for ($i = 0; $i -lt 10; $i++) {
-    try { [IO.Directory]::Move($dir, $aside); break } catch { Start-Sleep -Seconds 1 }
+  $how = $null
+  for ($i = 0; $i -lt 4 -and -not $how; $i++) {
+    try { [IO.Directory]::Move($dir, $aside); $how = 'in one rename' } catch { Start-Sleep -Seconds 1 }
   }
-  if (-not (Test-Path -LiteralPath (Join-Path $aside $exe))) {
-    $p = Folder-Procs $dir
-    $who = if ($p.Count) { " ($((@($p | ForEach-Object { $_.Name }) | Select-Object -Unique) -join ', ') from that folder is running)" } else { '' }
-    Stop-Install "Overnight was not updated: a program is using a file in its folder $dir$who. Restart the computer and run this installer again. Nothing was changed: the version you have still works."
+  if (-not $how) {
+    # refused: a program works in the folder (or holds a file). Its entries, marked first so a run that dies half way is
+    # put back by the next one
+    [void][IO.Directory]::CreateDirectory($aside)
+    [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
+    $bad = Move-Entries $dir $aside
+    if ($bad) {
+      $back = Move-Entries $aside $dir
+      if (-not $back) { Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue; Remove-Tree $aside }
+      else { [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir) }   # (the next run of this installer puts the rest back)
+      $p = @(Folder-Procs $dir | ForEach-Object { $_.Name -replace '\.exe$', '' } | Select-Object -Unique)
+      if ($p.Count) { Stop-Install "Overnight was not updated: $($p -join ', ') is using a file in its folder ($bad). Close it, then run this installer again. Nothing was changed: the version you have still works." }
+      Stop-Install "Overnight was not updated: another program is using a file in its folder ($bad). Close that program, then run this installer again (if you can't find it, restart the computer first). Nothing was changed: the version you have still works."
+    }
+    $how = 'entry by entry (a program works in that folder)'
   }
   [IO.File]::WriteAllText((Join-Path $aside '.ovn-moved'), $dir)
-  Note "moved the installed version aside ($aside): it is deleted once the new one is in"
+  Note "moved the installed version aside $how ($aside): it is deleted once the new one is in"
   return $aside
-}
-function Put-Back($aside, $dir, $exe = 'Overnight.exe') {
-  if (-not $aside -or -not (Test-Path -LiteralPath (Join-Path $aside $exe))) { return $false }
-  Remove-Tree $dir
-  try { [IO.Directory]::Move($aside, $dir); Remove-Item -LiteralPath (Join-Path $dir '.ovn-moved') -Force -ErrorAction SilentlyContinue; return $true }
-  catch { Warn "could not put the old version back from $aside ($($_.Exception.Message)): the next run of this installer does it"; return $false }
 }
 function App-Version($exe) {
   if (-not (Test-Path -LiteralPath $exe)) { return $null }
