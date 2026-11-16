@@ -353,7 +353,7 @@ and Skool login (`%APPDATA%\Overnight`, or the data folder they moved it to) are
    files; less afterwards). If the drive has less, tell the member how much to free and let them do it (Recycle Bin,
    old videos or downloads moved to another drive). Never delete anything yourself.
 3. **Run the installer** (sections 4 and 5: test mode first, then the real run; ask the member to close Overnight or
-   say yes to `OVERNIGHT_CLOSE_APP=1`). You do not need `OVERNIGHT_REINSTALL=1`: install.ps1 checks the installed
+   say yes to `OVERNIGHT_CLOSE_APP=1`). Usually you do not need `OVERNIGHT_REINSTALL=1`: install.ps1 checks the installed
    files against that version's list (its own `resources\install-manifest.json` from 0.5.1, or for 0.5.0
    `install-manifest-0.5.0.json` on its release page) and installs again by itself when files are missing, also when
    it is the newest version. Read these lines:
@@ -363,8 +363,11 @@ and Skool login (`%APPDATA%\Overnight`, or the data folder they moved it to) are
    - `all M of Overnight's files are there`: the install is complete. This is the line that proves it.
    - `the install is missing files ...: removing Overnight's program folder and installing it once more`: the first
      try was incomplete; it removes the program folder (only that folder) and installs once more by itself.
-   - `no list of Overnight X's files to check against: not checked`: that version's list is not on its release page
-     (yet). Then prove it in step 5 instead.
+   - `has no list of its files to check against` (before the install) and then `is installed and up to date`: that
+     version's list is not on its release page (yet), so nothing was checked or installed. When the member's symptoms
+     match this section, run the real run again with `OVERNIGHT_REINSTALL=1` (and `OVERNIGHT_CLOSE_APP=1` after their
+     yes): it installs the newest version again into an emptied folder.
+   - `no list of Overnight X's files to check against: not checked` (after the install): the same; prove it in step 5.
 4. **Still missing files after installing it twice:** almost always the disk ran full again, or an antivirus took
    files (its quarantine, section 9). Free more space or restore the files in the antivirus and allow Overnight's
    folder there (the member does both), restart the computer, and run the installer once more.
