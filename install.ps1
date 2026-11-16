@@ -21,6 +21,15 @@
 #                            data in <dir>\data and new videos in <dir>\videos. Used on a first install or with
 #                            OVERNIGHT_REINSTALL=1; an update keeps the folder Overnight is already in
 #   OVERNIGHT_SETUP_NO_WINGET=1  tests only: skip winget, so the official downloads are what runs
+#   OVERNIGHT_TEST_RELEASE_BASE=<folder>  tests only (ci\test-complete-install.ps1): the release files come from that
+#                            folder, its fake-installer.ps1 stands in for the installer, OVERNIGHT_TEST_APPDIR is the install
+#                            folder, OVERNIGHT_TEST_FREE_GB the free space, and only the Overnight step runs
+# Overnight's own files (16 Nov 2026, after updates to 0.5.0 that left files out): before it installs, the disks must
+# have room (else it stops with the numbers, nothing changed); the download must match the release's SHA256SUMS.txt;
+# after it installs, every file is checked against the version's list (resources\install-manifest.json, or for 0.5.0
+# install-manifest-0.5.0.json on its release page); an incomplete install is removed (the program folder only, never the
+# data or the videos) and installed once more. An installed Overnight with files missing is installed again even when it
+# is the newest version.
 # How it ends: 0 = all set; 3 = finished, with problems left (listed at the end); 1 = stopped (the reason is printed).
 # Its output also goes to %TEMP%\overnight-setup\install.log.
 
@@ -91,6 +100,7 @@ function Get-Signed($url, $name) {
 function Run-Installer($file, [string[]]$args2, $minutes) {
   # waits for this one process only: Start-Process -Wait would also wait for anything it starts (Overnight's own
   # installer starts the app)
+  if ($TestBase -and $file -like '*Overnight-Setup*') { $args2 = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $TestBase 'fake-installer.ps1'), '-Setup', $file, '-Dir', $AppDir); $file = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }   # (a test: its fake installer)
   $p = Start-Process -FilePath $file -ArgumentList $args2 -PassThru
   $null = $p.Handle   # (keeps the exit code readable after the wait in PowerShell 5.1)
   if (-not $p.WaitForExit($minutes * 60000)) { throw "$([IO.Path]::GetFileName($file)) did not finish in $minutes minutes" }
@@ -215,6 +225,11 @@ function Find-AppPython {
 
 # ---- Overnight itself ----
 function Find-AppDir {
+  if ($TestBase -and $env:OVERNIGHT_TEST_APPDIR) {
+    $t = [IO.Path]::GetFullPath($env:OVERNIGHT_TEST_APPDIR).TrimEnd('\')
+    if ($t -match 'Programs\\overnight$') { throw "OVERNIGHT_TEST_APPDIR may not be a real Overnight folder ($t)" }
+    return $t
+  }
   # where the installer put it, else the default per-user folder. electron-builder keeps that folder in
   # HKCU\Software\<app GUID>\InstallLocation: its uninstall entry (key name = the same GUID) has no InstallLocation, so the
   # old lookup never matched and a custom-folder install (OVERNIGHT_INSTALL_DIR, e.g. on D:) looked "not installed".
@@ -337,15 +352,111 @@ function Move-OldApp($dir, $exe = 'Overnight.exe') {
 }
 function App-Version($exe) {
   if (-not (Test-Path -LiteralPath $exe)) { return $null }
+  if ($TestBase) { $vf = Join-Path (Split-Path $exe) 'version.txt'; if (Test-Path -LiteralPath $vf) { return ([IO.File]::ReadAllText($vf)).Trim() }; return $null }   # (a test's fake app)
   $v = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
   if ($v -match '^\d+\.\d+\.\d+\.\d+$') { $v = $v -replace '\.\d+$', '' }
   if (-not $v -or $v -eq '0.0.0') { return $null }
   return $v
 }
 function App-Procs($exe) { @(Get-Process -Name 'Overnight' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -ieq $exe }) + @(Folder-Procs (Split-Path $exe) | ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } | Where-Object { $_.Name -ne 'Overnight' }) }
+# ---- the release files: from github.com, or in a test from a folder (OVERNIGHT_TEST_RELEASE_BASE) ----
+$TestBase = if ($env:OVERNIGHT_TEST_RELEASE_BASE) { [IO.Path]::GetFullPath($env:OVERNIGHT_TEST_RELEASE_BASE) } else { $null }
+function Rel-Url($tag, $name) { if ($tag -eq 'latest') { "https://github.com/$Owner/$Repo/releases/latest/download/$name" } else { "https://github.com/$Owner/$Repo/releases/download/$tag/$name" } }
+function Rel-Text($tag, $name) {
+  if ($TestBase) { $f = Join-Path $TestBase $name; if (-not (Test-Path -LiteralPath $f)) { throw "404: $name" }; return [IO.File]::ReadAllText($f) }
+  return (Web-Get (Rel-Url $tag $name))
+}
+function Rel-File($tag, $name, $out) {
+  if ($TestBase) { $f = Join-Path $TestBase $name; if (-not (Test-Path -LiteralPath $f)) { throw "404: $name" }; Copy-Item -LiteralPath $f -Destination $out -Force; return }
+  Web-File (Rel-Url $tag $name) $out
+}
+
+# ---- Overnight's own files: an install against the list of its version's files (16 Nov 2026) ----
+function Manifest-For($dir, $ver) {
+  # its own list (0.5.1 and newer), else the one published next to that version's installer (0.5.0); $null = none
+  $own = Join-Path $dir 'resources\install-manifest.json'
+  if (Test-Path -LiteralPath $own) { return $own }
+  return (Release-List $ver)
+}
+function Release-List($ver) {
+  # install-manifest-<version>.json from that version's release page (the app's scripts/release.mjs publishes it)
+  if (-not $ver) { return $null }
+  $f = Join-Path $Dl "install-manifest-$ver.json"
+  if ((Test-Path -LiteralPath $f) -and (Get-Item -LiteralPath $f).Length -gt 100) { return $f }   # (fetched already in this run)
+  try { Rel-File "v$ver" "install-manifest-$ver.json" $f; if ((Get-Item -LiteralPath $f).Length -gt 100) { return $f } } catch { }
+  return $null
+}
+function Check-Install($dir, $ver) {
+  # @{ ok; total; missing; wrong; first } (every listed file there with its size), $null when there is no list.
+  # \\?\ paths: no 260-character limit (Crayon's Chrome sits near it); Python's bytecode and caches are not counted
+  $man = Manifest-For $dir $ver
+  if (-not $man) { return $null }
+  $r = @{ ok = $true; total = 0; missing = 0; wrong = 0; first = New-Object System.Collections.ArrayList }
+  $res = Long-Path (Join-Path $dir 'resources')
+  $have = New-Object 'System.Collections.Generic.Dictionary[string,long]' ([StringComparer]::OrdinalIgnoreCase)
+  if ([IO.Directory]::Exists($res)) {
+    $cut = $res.Length + 1
+    foreach ($f in ([IO.DirectoryInfo]::new($res)).EnumerateFiles('*', [IO.SearchOption]::AllDirectories)) { $have[$f.FullName.Substring($cut).Replace('\', '/')] = $f.Length }
+  }
+  $rx = [regex]'^\["((?:[^"\\]|\\.)*)",(-?\d+|null)\],?$'
+  $first = $true
+  foreach ($l in [IO.File]::ReadAllLines($man)) {   # (all at once: the file is closed again at once)
+    if ($first) {
+      $first = $false
+      if ($ver -and $l -match '"version":"([^"]+)"' -and $Matches[1] -ne $ver) { $r.ok = $false; [void]$r.first.Add("its list of files is of version $($Matches[1])"); return $r }
+      continue
+    }
+    $m = $rx.Match($l)
+    if (-not $m.Success) { continue }
+    $rel = $m.Groups[1].Value
+    if ($rel.Contains('\')) { $rel = [regex]::Unescape($rel) }
+    if ($rel -match '(^|/)__pycache__/|\.pyc$|(^|/)node_modules/\.cache/') { continue }
+    $r.total++
+    $size = 0L
+    if (-not $have.TryGetValue($rel, [ref]$size)) { $r.missing++; if ($r.first.Count -lt 3) { [void]$r.first.Add($rel) } }
+    elseif ($m.Groups[2].Value -ne 'null' -and [long]$m.Groups[2].Value -ne $size) { $r.wrong++; if ($r.first.Count -lt 3) { [void]$r.first.Add("$rel (size)") } }
+  }
+  if ($r.missing -or $r.wrong -or $r.total -lt 1) { $r.ok = $false }
+  return $r
+}
+function Check-Line($c) {
+  if (-not $c) { return 'no list of its files to check against' }
+  $p = @()
+  if ($c.missing) { $p += "$($c.missing) of $($c.total) files missing" }
+  if ($c.wrong) { $p += "$($c.wrong) of $($c.total) with the wrong size" }
+  if (-not $p.Count) { $p += 'not complete' }
+  return (($p -join ', ') + $(if ($c.first.Count) { ': ' + ($c.first -join ', ') } else { '' }))
+}
+function Free-GB($p) {
+  if ($env:OVERNIGHT_TEST_FREE_GB -and $TestBase) { return [double]$env:OVERNIGHT_TEST_FREE_GB }
+  try { return [math]::Round((New-Object IO.DriveInfo ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($p)))).AvailableFreeSpace / 1GB, 1) } catch { return $null }
+}
+function Check-Space($appDir, $unpackedGB) {
+  # %TEMP%: the download and the installer's own unpacked copy; the install folder's drive: the new files (the version
+  # there is moved aside on the same drive and deleted only after); half a GB more on each
+  $setupGB = 0.8
+  $t = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Dl)).ToUpper(); $i = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($appDir)).ToUpper()
+  $need = @{}
+  $need[$t] = 2 * $setupGB + $unpackedGB
+  if ($need.ContainsKey($i)) { $need[$i] += $unpackedGB } else { $need[$i] = $unpackedGB }
+  foreach ($d in @($need.Keys)) {
+    $want = [math]::Round($need[$d] + 0.5, 1); $free = Free-GB $d
+    if ($null -ne $free -and $free -lt $want) {
+      Stop-Install "not enough free disk space to install Overnight: $($d.TrimEnd('\')) has $free GB free and the install needs about $want GB while it runs. Free $([math]::Round($want - $free + 0.1, 1)) GB or more (empty the Recycle Bin, move old videos or downloads to another drive), then run this installer again. Nothing was changed."
+    }
+    Ok "$($d.TrimEnd('\')) has $free GB free (the install needs about $want GB while it runs)"
+  }
+}
+function Remove-AppFolder($dir) {
+  # the program folder only: Overnight's data (%APPDATA%\Overnight, or the data folder it was moved to) and the videos
+  # (Documents\Overnight) are elsewhere and stay. A folder that also holds other files keeps them: only resources goes
+  if (-not (Test-Path -LiteralPath $dir)) { return }
+  if (App-Only $dir) { Remove-Tree $dir } else { Remove-Tree (Join-Path $dir 'resources') }
+}
+
 function Latest-Release {
   # the release's own update file: version, installer file name, sha512 (no GitHub API rate limit)
-  try { $yml = Web-Get "https://github.com/$Owner/$Repo/releases/latest/download/latest.yml" } catch { return $null }
+  try { $yml = Rel-Text 'latest' 'latest.yml' } catch { return $null }
   $r = @{ version = [regex]::Match($yml, '(?m)^version:\s*(\S+)').Groups[1].Value; file = [regex]::Match($yml, '(?m)^path:\s*(\S+)').Groups[1].Value; sha512 = [regex]::Match($yml, '(?m)^sha512:\s*(\S+)').Groups[1].Value }
   if ($r.version -and $r.file) { return $r } else { return $null }
 }
@@ -380,6 +491,7 @@ try {
     }
   } finally { Remove-Item -LiteralPath $pf -Force -ErrorAction SilentlyContinue }
 } catch { Note "could not check where AppData writes go ($($_.Exception.Message))" }
+if ($redirect -and $TestBase) { Note "(test: AppData is redirected into $redirect; a test writes only into its own folders)"; $redirect = $null }
 if ($redirect) {
   Stop-Install "this PowerShell's AppData is redirected into the app package $redirect, so what it installs would only be visible inside that app. Run it from a terminal of your own: open PowerShell (Start menu, type PowerShell, press Enter) and paste: $OneLine"
 }
@@ -395,6 +507,8 @@ $SacHow = 'Turning Smart App Control off is your decision: Windows Security > Ap
 if ($sac -eq 1) { Warn "Smart App Control is On. It may block Overnight (not code-signed yet) and the Python packages it uses (transcription, WinError 4551). $SacHow" }
 elseif ($sac -eq 2) { Note 'Smart App Control is in evaluation mode: if Windows turns it On later, it may block Overnight (not code-signed yet).' }
 
+if ($TestBase) { Warn 'Test (OVERNIGHT_TEST_RELEASE_BASE): only the Overnight step runs, from a folder of fake release files.' }
+if (-not $TestBase) {
 Step 'Windows Package Manager (winget)'
 Refresh-Path
 if ($env:OVERNIGHT_SETUP_NO_WINGET -eq '1') { Warn 'winget skipped (OVERNIGHT_SETUP_NO_WINGET, a test): the official downloads are used.' }
@@ -474,6 +588,8 @@ else {
 $clDir = Split-Path $claudeHome
 if (-not $DryRun -and $cl -eq $claudeHome -and -not (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $clDir)) { Add-UserPath $clDir; Note "added $clDir to your PATH, so 'claude' works in a new terminal" }
 
+}   # (not in a test: the tools)
+
 # ---- Overnight ----
 Step 'Overnight'
 $AppDir = Find-AppDir
@@ -485,7 +601,21 @@ if (-not $latest) {
   if ($current) { Problem "could not reach https://github.com/$Owner/$Repo/releases, so Overnight $current was not checked for an update." }
   else { Stop-Install "could not reach https://github.com/$Owner/$Repo/releases (no internet, or a firewall, proxy or VPN blocks github.com). Nothing of Overnight was changed: run this installer again." }
 }
-if ($current -and (-not $latest -or ((Ver $current) -ge (Ver $latest.version) -and -not $Reinstall))) { Ok "Overnight $current is installed and up to date ($AppExe)" }
+# an install with files missing (an update that did not finish, files an antivirus took): installed again, also when it is
+# the newest version (projects, settings and the Skool login stay)
+$Broken = $null
+if ($current) {
+  $chk = Check-Install $AppDir $current
+  if ($chk -and -not $chk.ok) {
+    $Broken = Check-Line $chk
+    Warn "Overnight $current is missing files ($Broken): it is installed again. Your videos, settings and Skool login stay."
+    if (-not $latest) { Problem "Overnight $current is missing files ($Broken) and https://github.com/$Owner/$Repo/releases could not be reached to install it again. Run this installer again when the internet works." }
+    $Reinstall = $true
+  } elseif ($chk) { Ok "Overnight $current has all $($chk.total) of its files" }
+  else { Note "Overnight $current has no list of its files to check against (it is checked after an install of a newer version)" }
+}
+if ($Broken -and -not $latest) { }   # (said above: no release to install it from)
+elseif ($current -and (-not $latest -or ((Ver $current) -ge (Ver $latest.version) -and -not $Reinstall))) { Ok "Overnight $current is installed and up to date ($AppExe)" }
 elseif ($DryRun) { Note "(test mode) would $(if ($current -and $Reinstall -and (Ver $current) -ge (Ver $latest.version)) { 'install again: Overnight' } elseif ($current) { "update Overnight $current to" } else { 'install Overnight' }) $($latest.version)" }
 else {
   $target = $latest.version
@@ -498,11 +628,16 @@ else {
   }
   if ($open.Count) { Problem "Overnight $current is open, so it was not updated to $target. Close it and run this installer again (or it updates itself when you close it)." }
   else {
+    # room first, for the whole install (the size of the new files from the version's list, when it has one)
+    $unpackedGB = 2.7
+    $relList = Release-List $target
+    if ($relList) { try { $sr = New-Object IO.StreamReader($relList); try { $h0 = $sr.ReadLine() } finally { $sr.Dispose() }; if ($h0 -match '"bytes":(\d+)') { $unpackedGB = [math]::Round([double]$Matches[1] / 1GB + 0.2, 1) } } catch { } }
+    Check-Space $AppDir $unpackedGB
     $setup = Join-Path $Dl $latest.file
     Note "Downloading Overnight $target (about 750 MB) ..."
-    try { Web-File "https://github.com/$Owner/$Repo/releases/download/v$target/$($latest.file)" $setup }
+    try { Rel-File "v$target" $latest.file $setup }
     catch {
-      try { Web-File "https://github.com/$Owner/$Repo/releases/latest/download/Overnight-Setup.exe" $setup }
+      try { Rel-File 'latest' 'Overnight-Setup.exe' $setup }
       catch { Stop-Install "the download of Overnight $target failed ($($_.Exception.Message)). Nothing was changed: check the internet connection and run this installer again." }
     }
     if ($latest.sha512) {
@@ -511,7 +646,14 @@ else {
       if ($got -ne $latest.sha512) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue; Stop-Install "the download of Overnight $target was damaged on the way (it does not match the release), so it was not run. Run this installer again; if it shows again, an antivirus's web scanning or a proxy changes downloads." }
       Ok 'download checked against the release (sha512)'
     }
-    try { Note "SHA-256 of the installer: $((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash) (the release page lists the same in SHA256SUMS.txt)" } catch { }
+    # SHA-256 against the release's SHA256SUMS.txt (what the release page lists): an installer that does not match never runs
+    $sums = $null; try { $sums = Rel-Text "v$target" 'SHA256SUMS.txt' } catch { }
+    $want256 = $null
+    if ($sums) { foreach ($l in ($sums -split "`n")) { if ($l -match '^([0-9A-Fa-f]{64})\s+\*?(\S+)\s*$' -and $Matches[2] -eq $latest.file) { $want256 = $Matches[1].ToUpper() } } }
+    if (-not $want256) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue; Stop-Install "the release $target has no SHA-256 for $($latest.file) (SHA256SUMS.txt could not be read), so the download was not run. Nothing was changed: run this installer again in a few minutes." }
+    $got256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToUpper()
+    if ($got256 -ne $want256) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue; Stop-Install "the download of Overnight $target does not match the release's SHA-256 (SHA256SUMS.txt), so it was not run. Nothing was changed. Run this installer again; if it shows again, an antivirus's web scanning or a proxy changes downloads." }
+    Ok "download checked against the release (SHA-256 $got256, as in SHA256SUMS.txt)"
     # OVERNIGHT_INSTALL_DIR: the member's own place (another drive). The app goes to <dir>\app; on a first install the
     # data (tools, packs) goes to <dir>\data and new videos to <dir>\videos. /D= must be the last argument, unquoted.
     # Without it the installer keeps the folder Overnight is already in (its registry entry), so an update never moves it
@@ -555,14 +697,33 @@ else {
         Ok "tools and data will live in $data, videos in $vids"
       }
     }
-    Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
     $AppDir = Find-AppDir; $AppExe = Join-Path $AppDir 'Overnight.exe'
     $now = App-Version $AppExe
     if ($code -ne 0 -or -not $now) {
+      Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
       $kept = if (Put-Back $aside $oldDir) { ' The version you had is back and still works.' } else { '' }
-      if ($code -eq 2) { Stop-Install "the Overnight installer stopped (code 2): Windows did not let it replace Overnight's files, or a program is using one of them.$kept Restart the computer, then run this installer again." }
+      if ($code -eq 2) { Stop-Install "the Overnight installer stopped (code 2): Windows did not let it replace Overnight's files, a program is using one of them, or the disk was too full.$kept Free some disk space, restart the computer, then run this installer again." }
       Stop-Install "the Overnight installer did not finish (code $code).$kept An antivirus may have blocked it: check its quarantine, then run this installer again."
     }
+    # every file of the new version there (its list): an incomplete install is removed (the program folder only) and
+    # installed once more
+    $chk = Check-Install $AppDir $now
+    if ($chk -and -not $chk.ok) {
+      Warn "the install is missing files ($(Check-Line $chk)): removing Overnight's program folder and installing it once more (your videos, settings and Skool login are elsewhere and stay)"
+      Remove-AppFolder $AppDir
+      try { $code = Run-Installer $setup $iargs 15 } catch { $code = -1 }
+      $now = App-Version $AppExe
+      $chk = Check-Install $AppDir $now
+    }
+    Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
+    if ($chk -and -not $chk.ok) {
+      $line = Check-Line $chk
+      $kept = ''
+      if ($aside -and $current -and (Ver $current) -lt (Ver $target) -and -not $Broken) { Remove-AppFolder $AppDir; if (Put-Back $aside $oldDir) { $kept = " The version you had ($current) is back."; $aside = $null } }
+      Stop-Install "Overnight $target is still missing files after installing it twice ($line).$kept Free some disk space (the install needs about $unpackedGB GB plus room for the download), restart the computer, then run this installer again. If an antivirus took files, allow Overnight's folder in it first."
+    }
+    if ($chk) { Ok "all $($chk.total) of Overnight's files are there" }
+    elseif ($code -eq 0) { Note "no list of Overnight $now's files to check against: not checked" }
     if ($aside) {
       Remove-Item -LiteralPath (Join-Path $aside '.ovn-moved') -Force -ErrorAction SilentlyContinue
       Remove-Tree $aside

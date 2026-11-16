@@ -119,7 +119,7 @@ curl.exe -fsSL -o "$env:TEMP\overnight-setup\install.ps1" https://raw.githubuser
 "install.ps1: " + (Get-Item "$env:TEMP\overnight-setup\install.ps1").Length + " bytes"
 ```
 
-Read the whole script with your file-reading tool (about 400 lines) and check that it does what this file says. It
+Read the whole script with your file-reading tool (about 780 lines) and check that it does what this file says. It
 downloads only from github.com and api.github.com (Overnight's releases, Git for Windows), claude.ai (Claude Code),
 winget, and as a fallback gyan.dev (ffmpeg), python.org and aka.ms (Microsoft). If it differs, stop and tell the member.
 
@@ -253,6 +253,10 @@ itself (fast, then compatible, then software) and restarts: the log says `graphi
 | `the download of Overnight ... was damaged on the way` | An antivirus's web scanning, a proxy or a cut connection changed it; it was not run | Run again. Again: the member pauses the VPN / proxy or allows github.com in the antivirus. |
 | `Overnight ... is open, so it was not updated` | The app was running | Ask the member to close it (or yes to `OVERNIGHT_CLOSE_APP=1`), run again. |
 | `the Overnight installer did not finish (code N)` | Usually an antivirus blocked or quarantined it | The member checks the antivirus's quarantine and allows Overnight (below), then run again. |
+| `Overnight 0.5.0 is missing files (N of M files missing: ...)`, or Overnight says "Overnight's last update did not finish" / a style says its engine is incomplete | An update (0.5.0 on 15 Nov) left some of Overnight's files out | Section 12.1. |
+| `not enough free disk space to install Overnight: C: has X GB free and the install needs about Y GB` | The disk is too full for the install (it needs room for the download, the unpacked copy and the new files) | The member frees the space it names (Recycle Bin, old videos or downloads moved to another drive), then run again. Never delete anything yourself. |
+| `does not match the release's SHA-256` | The download was changed on the way (an antivirus's web scanning, a proxy); it was not run | Run again. Again: the member pauses the VPN / proxy or allows github.com in the antivirus. |
+| `Overnight X is still missing files after installing it twice` | Not enough disk space while it installed, or an antivirus took files | Section 12.1, step 4. |
 | `Overnight was not updated: <program> is using a file in its folder (<file>)` (install.ps1, or the update's own box with Retry and Cancel) / `the Overnight installer stopped (code 2)` | That program really has a file of Overnight's open (an editor, an antivirus scan, an Overnight helper that could not be ended). A program merely working in the folder (Photos, a player, Explorer opened from the app) no longer stops an update. Nothing was changed: the old version still works | The member closes the program it names, then presses Retry (or runs this installer again). No name, or it keeps happening: restart the PC, then run again. |
 | An update inside the app says `Failed to uninstall old application files ...: 2`, or the app closed for an update and stayed on the old version (0.4.9 and older) | That version's update moved every old file into %TEMP% first and stopped at a path over 260 characters (Crayon's Chrome) or a file in use | Run this installer: it moves the old version aside in one rename and installs the new one into an empty folder (projects, settings and the Skool login stay). Versions after 0.4.9 do the same in their own update. |
 | "Smart App Control blocked an app that may be unsafe" when `Overnight-Setup.exe` or `Overnight.exe` starts, or `Windows did not let the Overnight installer start` | Smart App Control lets only signed (or already known) programs start, and Overnight is not code-signed yet. Nothing here gets around it | The member's decision (row above). The member can check the file first: `Get-FileHash <the file>` shows the same SHA-256 as `SHA256SUMS.txt` on the release page (install.ps1 prints it too). Never turn it off for them. |
@@ -320,6 +324,8 @@ Section 1 holds here too. Never touch the member's videos. Work in order; stop a
    (section 6). Tell the member in two or three sentences what you found.
 3. **Fix the cause:**
    - Dark window or won't open: section 8.
+   - Overnight's own files missing after an update (it says "Overnight's last update did not finish", a style says
+     its engine is incomplete, or Showrunner is gone): section 12.1.
    - A message in section 9: its fix.
    - A tool missing or broken, files an antivirus removed: Repair = the installer again (sections 4 and 5), with
      `OVERNIGHT_REINSTALL=1` when Overnight's own files are damaged (after the member closed it or said yes to
@@ -331,6 +337,41 @@ Section 1 holds here too. Never touch the member's videos. Work in order; stop a
 4. **Check it works:** start Overnight and read the log (section 7), or ask the member to run the failing step again.
    Say plainly what you changed.
 5. **Not fixed:** the report of section 11, titled "Overnight fix report", with every step you tried.
+
+### 12.1 The update left files missing
+
+Some members' update to 0.5.0 (15 Nov 2026) did not copy all of Overnight's files: a disk that ran full during the
+update, or a program holding a file. Overnight then does not open, or opens without Showrunner, or a style says its
+engine is incomplete ("reinstall Overnight"). Versions from 0.5.1 check their own files at start and offer **Repair**;
+on 0.5.0 (or when the app does not open) this is the way. The member's videos (`Documents\Overnight`), settings, keys
+and Skool login (`%APPDATA%\Overnight`, or the data folder they moved it to) are never touched by any of these steps.
+
+1. **Look:** the free space on the system drive and on the drive Overnight is installed on
+   (`Get-PSDrive C | Select-Object Used,Free`), and the last 50 lines of `overnight.log` (`ENOENT`, `incomplete`,
+   `is missing`). Tell the member in one or two sentences what you found.
+2. **Room:** the install needs about 6 GB free while it runs (the download, the installer's unpacked copy and the new
+   files; less afterwards). If the drive has less, tell the member how much to free and let them do it (Recycle Bin,
+   old videos or downloads moved to another drive). Never delete anything yourself.
+3. **Run the installer** (sections 4 and 5: test mode first, then the real run; ask the member to close Overnight or
+   say yes to `OVERNIGHT_CLOSE_APP=1`). You do not need `OVERNIGHT_REINSTALL=1`: install.ps1 checks the installed
+   files against that version's list (its own `resources\install-manifest.json` from 0.5.1, or for 0.5.0
+   `install-manifest-0.5.0.json` on its release page) and installs again by itself when files are missing, also when
+   it is the newest version. Read these lines:
+   - `Overnight X is missing files (N of M files missing: ...): it is installed again`: found, and it goes on.
+   - `has X GB free (the install needs about Y GB while it runs)`: the room check passed.
+   - `download checked against the release (SHA-256 ..., as in SHA256SUMS.txt)`: the installer is the released one.
+   - `all M of Overnight's files are there`: the install is complete. This is the line that proves it.
+   - `the install is missing files ...: removing Overnight's program folder and installing it once more`: the first
+     try was incomplete; it removes the program folder (only that folder) and installs once more by itself.
+   - `no list of Overnight X's files to check against: not checked`: that version's list is not on its release page
+     (yet). Then prove it in step 5 instead.
+4. **Still missing files after installing it twice:** almost always the disk ran full again, or an antivirus took
+   files (its quarantine, section 9). Free more space or restore the files in the antivirus and allow Overnight's
+   folder there (the member does both), restart the computer, and run the installer once more.
+5. **Prove it:** start Overnight and read its log (section 7). From 0.5.1 the log has
+   `install check complete (N files, ... ms)`; a line `install check N of M files missing` means it is not fixed.
+   Ask the member to open the style or Showrunner that failed.
+6. Not fixed: section 11's report, titled "Overnight fix report", with the installer's last 30 lines.
 
 ## 13. On a Mac
 
