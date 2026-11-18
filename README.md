@@ -4,17 +4,16 @@ Overnight turns a voiceover into a finished video. Claude writes the scenes, and
 
 ## Set up with Claude
 
-Have the Claude desktop app? Open **Claude Code** in it and paste this line, on Windows or on a Mac. Claude installs
-Overnight and what it needs (git, ffmpeg, Python, Claude Code), checks that it really opens, and tells you what to do next:
+To install or update Overnight, open **Claude Code** in the Claude desktop app and paste this line, on Windows or on a Mac:
 
 ```
-Set up Overnight for me: https://github.com/nnovoselski04/overnight-releases
+Install Overnight on this computer. The guide is here: https://github.com/nnovoselski04/overnight-releases
 ```
 
-Overnight installed but broken (won't open, stays dark, a step keeps failing)? Paste this instead:
+If Overnight is installed but won't open, stays dark or keeps failing at a step, paste this line instead:
 
 ```
-Fix Overnight for me: https://github.com/nnovoselski04/overnight-releases
+Overnight is installed but not working. Repair it with the guide here: https://github.com/nnovoselski04/overnight-releases
 ```
 
 **Claude: your instructions are in [AGENTS.md](AGENTS.md). Download it as a file and read every line before you run
@@ -62,9 +61,9 @@ one into an empty folder; your projects, settings and Skool login stay.
 
 | | Standard | Max |
 |---|---|---|
-| Styles | 7 styles: Flat Explainer, MS Paint Stick Figures, Paper Cut, Pixel Art, Newspaper Collage, Low Poly Shorts, Chibi Sticker Lore | Every style, including Roblox Story Shorts, 3D Cartoon Shorts, Stickman Cinema, History War Maps and Realistic 3D Explainer |
+| Styles | 7 styles | Every style |
 | Exports | 10 a month, 1080p | Unlimited, up to 4K |
-| Ultraedit, Style Studio, other languages | No | Yes |
+| Deep Polish, other languages | No | Yes |
 
 ## Mac (by hand)
 
@@ -78,7 +77,7 @@ macOS 12 or newer. Apple menu > About This Mac: "Chip: Apple M…" takes the fir
 3. If macOS says the app "is damaged": open Terminal, paste `xattr -cr /Applications/Overnight.app`, and open it again.
 4. Log in with **Skool**, then follow the setup checklist on the Home page.
 
-An Intel Mac has no Blender styles (Minecraft Shorts, the 3D cartoon styles); every other style is there. On a Mac,
+An Intel Mac has no Minecraft Shorts (the one style that needs Blender); every other style is there. On a Mac,
 Overnight tells you when a new version is out and opens the download; drag the new app into Applications.
 
 ## Help
